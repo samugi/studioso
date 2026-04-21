@@ -1,0 +1,55 @@
+# Study Agent Configuration
+# Edit this file to change your study folder, model, and other settings.
+
+# ─── Study Materials ──────────────────────────────────────────────────────────
+# Path to the folder containing your study documents.
+# Can be absolute or relative to this config file.
+# Examples:
+#   study_folder: "./materials/biology"
+#   study_folder: "C:/Users/YourName/Documents/StudyMaterials"
+#   study_folder: "/Users/yourname/Documents/chemistry"
+study_folder: "./materials"
+
+# ─── Model Settings ───────────────────────────────────────────────────────────
+# Ollama model to use. Recommendations for 16GB RAM:
+#   - "mistral:7b"       ← best balance of speed and quality (recommended)
+#   - "llama3.2:3b"      ← faster, lighter, still good
+#   - "llama3.1:8b"      ← higher quality, a bit slower
+#   - "phi3:mini"        ← very fast, smaller model
+ollama_model: "mistral:7b"
+
+# Ollama server address (default is fine unless you changed it)
+ollama_url: "http://localhost:11434"
+
+# ─── Embedding Model ──────────────────────────────────────────────────────────
+# Used to index your documents for accurate retrieval.
+# This runs locally and is downloaded automatically on first run.
+# Options: "all-MiniLM-L6-v2" (fast, small) or "all-mpnet-base-v2" (better quality)
+embedding_model: "all-MiniLM-L6-v2"
+
+# ─── Retrieval Settings ───────────────────────────────────────────────────────
+# How many document chunks to retrieve per query.
+# Higher = more context, but slower. Range: 3–10
+retrieval_top_k: 5
+
+# Size of each text chunk (in characters) when indexing documents.
+# Smaller = more precise retrieval. Larger = more context per chunk.
+chunk_size: 800
+
+# Overlap between chunks (prevents cutting off context at boundaries)
+chunk_overlap: 100
+
+# ─── Quiz Settings ────────────────────────────────────────────────────────────
+# Number of questions per quiz session (can be overridden interactively)
+default_quiz_length: 10
+
+# ─── Agent Behavior ───────────────────────────────────────────────────────────
+# Path to the behavior configuration file
+agent_config: "./AGENT.md"
+
+# ─── UI Settings ──────────────────────────────────────────────────────────────
+# Show source document references in answers
+show_sources: true
+
+# Maximum characters to show per source excerpt in citations
+source_excerpt_length: 200
