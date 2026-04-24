@@ -1,3 +1,28 @@
+# Python bytecode
 __pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Test and tool caches
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Coverage and build artifacts
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# Local app runtime data
+.study_agent_db/
+.study_agent_review/
+
+# OS files
 .DS_Store
