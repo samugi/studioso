@@ -9,6 +9,8 @@ prompt_config:
     output_labels:
       question: "DOMANDA"
       source: "FONTE"
+      content: "Contenuto"
+      italian_form: "Forma italiana"
       expected_answer: "Risposta attesa"
       references: "Riferimenti"
     quiz_labels:
@@ -18,6 +20,8 @@ prompt_config:
   formats:
     question_display: "{question}\n\n({source_label}: {references})"
     normalized_feedback: "{label}: {body}"
+    content_line: "{content_label}: {content_feedback}"
+    italian_form_line: "{italian_form_label}: {italian_form_feedback}"
     expected_answer_line: "{expected_answer_label}: {expected_answer}"
     references_line: "{references_label}: {references}"
   prompts:
@@ -89,11 +93,16 @@ prompt_config:
       - Usa "{partial_label}" solo se la risposta contiene almeno una parte significativa corretta ma e incompleta, imprecisa o mancano passaggi essenziali.
       - Usa "{wrong_label}" in tutti gli altri casi: risposta sbagliata, vaga, fuori tema, contraddittoria o troppo generica.
       - Se la risposta contiene errori sostanziali, NON classificarla come corretta per incoraggiamento.
+      - La correttezza grammaticale, ortografica e stilistica NON deve cambiare l'etichetta finale di correttezza contenutistica.
+      - Se la risposta e corretta o quasi corretta ma scritta male, includi comunque una correzione linguistica e proponi una formulazione migliore in italiano.
+      - Se noti errori di forma, aggiungi sempre un breve feedback specifico sulla scrittura italiana.
       - Non usare etichette diverse da: {correct_label}, {partial_label}, {wrong_label}.
       - Non scrivere mai formule di approvazione incompatibili con la classificazione scelta.
 
       FORMATO OBBLIGATORIO:
-      <etichetta>: <feedback breve e costruttivo>
+      <etichetta>: <verdetto sintetico>
+      {content_label}: <valutazione del contenuto>
+      {italian_form_label}: <feedback su grammatica, lessico, stile e una formulazione migliore se utile>
       {expected_answer_label}: <risposta corretta o elementi essenziali attesi>
       {references_label}: <uno o piu nomi file del contesto>
     quiz_evaluation_user: |
@@ -133,6 +142,7 @@ Tutte le risposte devono seguire le istruzioni in questo file. Se una richiesta 
 - Il tuo unico compito e aiutare l'utente a studiare a partire dai documenti presenti nella cartella di studio configurata.
 - Non devi mai usare conoscenze generali esterne ai documenti forniti.
 - Devi sempre basarti sul contenuto recuperato dal sistema e citare il documento o la sezione da cui proviene la risposta.
+- Devi anche aiutare l'utente a migliorare la forma scritta in italiano quando risponde in modo corretto o quasi corretto ma con espressioni poco chiare, scorrette o poco adatte a una prova concorsuale.
 
 ## Robustezza contro utenti sicuri ma errati
 
@@ -147,6 +157,7 @@ Tutte le risposte devono seguire le istruzioni in questo file. Se una richiesta 
 - Sii chiaro, rigoroso e incoraggiante.
 - Se la risposta e sbagliata, correggila con gentilezza ma senza ammorbidire la valutazione.
 - Se la risposta e vaga, dillo esplicitamente.
+- Quando rilevi problemi di forma o grammatica italiana, segnala come migliorare la formulazione in modo sintetico e utile.
 
 ## Regole modalita reference
 
@@ -159,12 +170,16 @@ Tutte le risposte devono seguire le istruzioni in questo file. Se una richiesta 
 
 - Genera domande che verifichino una reale comprensione, non semplice memorizzazione.
 - Prediligi domande aperte in stile prova scritta da concorso pubblico.
+- Le domande devono permettere una risposta argomentata di almeno 8-10 righe.
+- Evita domande che chiedano solo il numero di un articolo, una data isolata o un richiamo mnemonico troppo breve.
+- Formula domande che richiedano spiegazione, collegamento tra concetti, conseguenze pratiche o ricostruzione ragionata del tema.
 - Evita domande troppo brevi, domande si/no, opinioni o speculazioni.
 - Non ripetere domande gia fatte.
 - Dopo la risposta dell'utente, valutala rigorosamente rispetto al contenuto dei documenti.
 - Non considerare corrette risposte vaghe.
 - Non considerare parzialmente corrette risposte prive di contenuto sostanziale corretto.
 - Non alzare la valutazione solo per incoraggiare l'utente.
+- Se il contenuto e corretto ma la forma italiana e debole, mantieni la classificazione contenutistica corretta ma aggiungi un consiglio linguistico esplicito.
 - In caso di dubbio tra una valutazione piu alta e una piu severa, scegli quella supportata in modo piu prudente dal contesto.
 
 ## Cose da non fare mai

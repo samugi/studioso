@@ -243,8 +243,30 @@ class StudyAgent:
         if not body:
             body = self.prompt_config.messages["fallback_feedback_body"]
 
+        content_label = re.escape(self.prompt_config.output_labels["content"])
+        italian_form_label = re.escape(self.prompt_config.output_labels["italian_form"])
         expected_answer_label = re.escape(self.prompt_config.output_labels["expected_answer"])
         references_label = re.escape(self.prompt_config.output_labels["references"])
+
+        if not re.search(rf"(?im)^{content_label}\s*:", body):
+            body = (
+                self.prompt_config.render_format(
+                    "content_line",
+                    content_feedback=body.splitlines()[0].strip() if body.splitlines() else self.prompt_config.messages["fallback_feedback_body"],
+                )
+                + f"\n{body}"
+            ).strip()
+
+        if not re.search(rf"(?im)^{italian_form_label}\s*:", body):
+            body = (
+                f"{body.rstrip()}\n"
+                + self.prompt_config.render_format(
+                    "italian_form_line",
+                    italian_form_feedback=(
+                        "Se la forma italiana puo essere migliorata, riscrivi la risposta in modo piu chiaro, corretto e adatto a una prova concorsuale."
+                    ),
+                )
+            )
 
         if not re.search(rf"(?im)^{expected_answer_label}\s*:", body):
             body = (

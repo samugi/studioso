@@ -1,26 +1,26 @@
 """
-quiz.py — Quiz mode: agent asks questions, user answers, agent evaluates.
+quiz.py - Quiz and review modes.
 """
+
+from __future__ import annotations
 
 import random
 import threading
+
+from prompt_toolkit import PromptSession
+from prompt_toolkit.styles import Style
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.rule import Rule
-from prompt_toolkit import PromptSession
-from prompt_toolkit.styles import Style
 
 from src.agent import StudyAgent
 from src.rag import RAGEngine
+from src.review_store import ReviewStore
 
 console = Console()
 
-PROMPT_STYLE = Style.from_dict(
-    {
-        "prompt": "#ffaa00 bold",
-    }
-)
+PROMPT_STYLE = Style.from_dict({"prompt": "#ffaa00 bold"})
 
 
 def _sample_question_context(rag: RAGEngine) -> list[dict]:
@@ -37,7 +37,7 @@ class QuestionPrefetcher:
         self.rag = rag
         self._lock = threading.Lock()
         self._thread: threading.Thread | None = None
-        self._ready_question: tuple[str, list[dict]] | None = None
+        self._ready_question: dict | None = None
         self._error: Exception | None = None
 
     def _generate(self, previous_questions: list[str]):
@@ -47,7 +47,7 @@ class QuestionPrefetcher:
                 raise RuntimeError("Nessun materiale di studio indicizzato.")
             question = self.agent.generate_question(question_chunks, previous_questions)
             with self._lock:
-                self._ready_question = (question, question_chunks)
+                self._ready_question = {"text": question, "source_chunks": question_chunks}
                 self._error = None
         except Exception as exc:
             with self._lock:
@@ -69,7 +69,7 @@ class QuestionPrefetcher:
             )
             self._thread.start()
 
-    def consume(self, previous_questions: list[str]) -> tuple[str, list[dict]]:
+    def consume(self, previous_questions: list[str]) -> dict:
         thread = None
         with self._lock:
             if self._ready_question is not None:
@@ -95,65 +95,94 @@ class QuestionPrefetcher:
         if not question_chunks:
             raise RuntimeError("Nessun materiale di studio indicizzato.")
         question = self.agent.generate_question(question_chunks, previous_questions)
-        return question, question_chunks
+        return {"text": question, "source_chunks": question_chunks}
 
 
-def run_quiz_mode(agent: StudyAgent, rag: RAGEngine):
+def _ask_question_count(session: PromptSession, default_n: int, label: str) -> int:
+    try:
+        n_input = session.prompt(f"Quante domande per {label}? (predefinito: {default_n}) › ").strip()
+        return int(n_input) if n_input.isdigit() and int(n_input) > 0 else default_n
+    except (KeyboardInterrupt, EOFError):
+        return 0
+
+
+def _evaluate_question(
+    agent: StudyAgent,
+    rag: RAGEngine,
+    question_data: dict,
+    user_answer: str,
+) -> tuple[str, str]:
+    question = question_data["text"]
+    question_chunks = question_data["source_chunks"]
+
+    with console.status("[dim]Valutazione della risposta...[/dim]", spinner="dots"):
+        support_chunks = rag.retrieve(
+            f"Domanda: {question}\nRisposta utente: {user_answer}",
+            top_k=4,
+        )
+        eval_chunks = rag.merge_chunks(question_chunks, support_chunks, limit=6)
+
+    console.print()
+    console.print("[bold green]Feedback[/bold green]")
+    full_eval = agent.evaluate_answer(question, user_answer, eval_chunks)
+    console.print(full_eval, markup=False)
+    return full_eval, agent.extract_quiz_feedback_label(full_eval)
+
+
+def _print_classification(label: str):
+    if label == "errato":
+        console.print("\n[red]✗ Classificazione: errato[/red]")
+    elif label == "parzialmente corretto":
+        console.print("\n[yellow]◑ Classificazione: parzialmente corretto[/yellow]")
+    else:
+        console.print("\n[green]✓ Classificazione: corretto[/green]")
+
+
+def _run_quiz_like_mode(
+    agent: StudyAgent,
+    rag: RAGEngine,
+    *,
+    session_title: str,
+    session_description: str,
+    n_questions: int,
+    question_supplier,
+    review_store: ReviewStore | None = None,
+):
     console.print()
     console.print(
         Panel(
-            "[bold yellow]Modalita Quiz[/bold yellow]\n"
-            "[dim]L'agente ti fara domande basate sui tuoi materiali di studio.\n"
-            "Rispondi e ricevi un feedback immediato.\n"
-            "Comandi: [bold]/back[/bold] per tornare al menu, [bold]/skip[/bold] per saltare la domanda.[/dim]",
+            session_description,
             border_style="yellow",
             expand=False,
         )
     )
     console.print()
 
-    default_n = agent.config.get("default_quiz_length", 10)
     session = PromptSession(style=PROMPT_STYLE)
-
-    try:
-        n_input = session.prompt(f"Quante domande? (predefinito: {default_n}) › ").strip()
-        n_questions = (
-            int(n_input) if n_input.isdigit() and int(n_input) > 0 else default_n
-        )
-    except (KeyboardInterrupt, EOFError):
+    if n_questions <= 0:
         return
 
-    console.print(
-        f"\n[dim]Avvio del quiz: {n_questions} domande.[/dim]\n"
-    )
+    console.print(f"\n[dim]Avvio di {session_title.lower()}: {n_questions} domande.[/dim]\n")
 
-    # Stats
     correct = 0
     partial = 0
     wrong = 0
     skipped = 0
     previous_questions: list[str] = []
-    prefetcher = QuestionPrefetcher(agent, rag)
-    prefetcher.start(previous_questions)
 
-    for q_num in range(1, n_questions + 1):
-        console.print(
-            Rule(
-                f"[yellow]Domanda {q_num} di {n_questions}[/yellow]",
-                style="yellow",
-            )
-        )
+    q_num = 1
+    while q_num <= n_questions:
+        console.print(Rule(f"[yellow]Domanda {q_num} di {n_questions}[/yellow]", style="yellow"))
         console.print()
 
         with console.status("[dim]Generazione della domanda...[/dim]", spinner="dots"):
             try:
-                question, question_chunks = prefetcher.consume(previous_questions)
+                question_data = question_supplier(previous_questions)
             except Exception as exc:
-                console.print(
-                    f"[red]Impossibile generare la domanda successiva: {exc}[/red]"
-                )
+                console.print(f"[red]Impossibile generare la domanda successiva: {exc}[/red]")
                 break
 
+        question = question_data["text"]
         previous_questions.append(question)
 
         console.print(
@@ -165,77 +194,53 @@ def run_quiz_mode(agent: StudyAgent, rag: RAGEngine):
         )
         console.print()
 
-        # Get user answer
         try:
             user_answer = session.prompt("La tua risposta › ").strip()
         except (KeyboardInterrupt, EOFError):
-            console.print("\n[dim]Quiz interrotto.[/dim]")
+            console.print(f"\n[dim]{session_title} interrotto.[/dim]")
             break
-
-        if not user_answer:
-            console.print("[dim]Nessuna risposta fornita. Domanda saltata.[/dim]")
-            skipped += 1
-            continue
-
-        if user_answer.lower() in ("/skip", "/s"):
-            console.print("[dim]Domanda saltata.[/dim]")
-            skipped += 1
-            continue
 
         if user_answer.lower() in ("/back", "/exit", "/quit", "/menu"):
             break
 
-        # Retrieve relevant context for evaluation
-        with console.status("[dim]Valutazione della risposta...[/dim]", spinner="dots"):
-            eval_chunks = rag.retrieve(question)
-            if not eval_chunks:
-                eval_chunks = question_chunks
-
-        # Evaluate the answer
-        console.print()
-        console.print("[bold green]Feedback[/bold green]")
-
-        try:
-            full_eval = agent.evaluate_answer(question, user_answer, eval_chunks)
-            console.print(full_eval, markup=False)
-        except Exception as e:
-            console.print(f"\n[red]Errore durante la valutazione: {e}[/red]")
+        if not user_answer or user_answer.lower() in ("/skip", "/s"):
+            console.print("[dim]Domanda sostituita con una nuova.[/dim]")
+            skipped += 1
+            previous_questions.pop()
             continue
 
-        if q_num < n_questions:
-            prefetcher.start(previous_questions)
-
-        label = agent.extract_quiz_feedback_label(full_eval)
+        try:
+            full_eval, label = _evaluate_question(agent, rag, question_data, user_answer)
+        except Exception as exc:
+            console.print(f"\n[red]Errore durante la valutazione: {exc}[/red]")
+            previous_questions.pop()
+            continue
 
         if label == "errato":
             wrong += 1
-            console.print(
-                "\n[red]✗ Classificazione: errato[/red]"
-            )
         elif label == "parzialmente corretto":
             partial += 1
-            console.print(
-                "\n[yellow]◑ Classificazione: parzialmente corretto[/yellow]"
-            )
         else:
             correct += 1
-            console.print("\n[green]✓ Classificazione: corretto[/green]")
 
+        if review_store is not None:
+            review_store.add(question_data, label)
+
+        _print_classification(label)
         console.print()
 
         if q_num < n_questions:
             try:
-                next_step = session.prompt(
-                    "Invio per la prossima domanda, /back per uscire › "
-                ).strip()
+                next_step = session.prompt("Invio per la prossima domanda, /back per uscire › ").strip()
                 if next_step.lower() in ("/back", "/exit", "/quit", "/menu"):
                     break
             except (KeyboardInterrupt, EOFError):
                 break
 
-    # Summary
+        q_num += 1
+
     console.print()
-    console.print(Rule("[yellow]Quiz completato[/yellow]", style="yellow"))
+    console.print(Rule(f"[yellow]{session_title} completato[/yellow]", style="yellow"))
     console.print()
 
     total_answered = correct + partial + wrong
@@ -247,7 +252,7 @@ def run_quiz_mode(agent: StudyAgent, rag: RAGEngine):
                 f"  [green]✓ Corrette:          {correct}[/green]\n"
                 f"  [yellow]◑ Parzialmente corrette: {partial}[/yellow]\n"
                 f"  [red]✗ Errate:            {wrong}[/red]\n"
-                f"  [dim]  Saltate:           {skipped}[/dim]\n\n"
+                f"  [dim]  Sostituite:        {skipped}[/dim]\n\n"
                 f"  [bold]Punteggio: {score_pct}%[/bold]  {'Ottimo.' if score_pct >= 80 else 'Continua a studiare.' if score_pct >= 50 else 'Hai bisogno di piu pratica.'}",
                 title="[yellow bold]Riepilogo[/yellow bold]",
                 border_style="yellow",
@@ -257,3 +262,70 @@ def run_quiz_mode(agent: StudyAgent, rag: RAGEngine):
         console.print("[dim]Nessuna domanda risposta.[/dim]")
 
     console.print()
+
+
+def run_quiz_mode(agent: StudyAgent, rag: RAGEngine):
+    review_store = ReviewStore(agent.config["study_material"])
+    session = PromptSession(style=PROMPT_STYLE)
+    default_n = agent.config.get("default_quiz_length", 10)
+    n_questions = _ask_question_count(session, default_n, "il quiz")
+    if n_questions <= 0:
+        return
+
+    prefetcher = QuestionPrefetcher(agent, rag)
+    prefetcher.start([])
+
+    def supplier(previous_questions: list[str]) -> dict:
+        question_data = prefetcher.consume(previous_questions)
+        prefetcher.start(previous_questions + [question_data["text"]])
+        return question_data
+
+    _run_quiz_like_mode(
+        agent,
+        rag,
+        session_title="Quiz",
+        session_description=(
+            "[bold yellow]Modalita Quiz[/bold yellow]\n"
+            "[dim]L'agente ti fara domande aperte basate sui tuoi materiali di studio.\n"
+            "Le domande sono pensate per risposte articolate, in stile prova scritta.\n"
+            "Comandi: [bold]/back[/bold] per tornare al menu, [bold]/skip[/bold] per sostituire la domanda con una nuova.[/dim]"
+        ),
+        n_questions=n_questions,
+        question_supplier=supplier,
+        review_store=review_store,
+    )
+
+
+def run_review_mode(agent: StudyAgent, rag: RAGEngine):
+    review_store = ReviewStore(agent.config["study_material"])
+    due_questions = review_store.list_all()
+    if not due_questions:
+        console.print("\n[dim]Nessuna domanda da ripassare per il materiale corrente.[/dim]\n")
+        return
+
+    session = PromptSession(style=PROMPT_STYLE)
+    default_n = min(agent.config.get("default_quiz_length", 10), len(due_questions))
+    n_questions = _ask_question_count(session, default_n, "il ripasso")
+    if n_questions <= 0:
+        return
+
+    queue = review_store.pop_many(n_questions)
+
+    def supplier(_previous_questions: list[str]) -> dict:
+        if not queue:
+            raise RuntimeError("Nessuna altra domanda disponibile per il ripasso.")
+        return queue.pop(0)
+
+    _run_quiz_like_mode(
+        agent,
+        rag,
+        session_title="Ripasso",
+        session_description=(
+            "[bold yellow]Modalita Ripasso[/bold yellow]\n"
+            "[dim]Ripassa le domande date in modo errato o parzialmente corretto per il materiale di studio attualmente caricato.\n"
+            "Comandi: [bold]/back[/bold] per tornare al menu, [bold]/skip[/bold] per sostituire la domanda con un'altra del ripasso.[/dim]"
+        ),
+        n_questions=min(n_questions, len(queue)),
+        question_supplier=supplier,
+        review_store=review_store,
+    )

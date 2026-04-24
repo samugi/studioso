@@ -1,239 +1,160 @@
-# Study Agent 📚
+# Study Agent
 
-A local AI study assistant that answers questions and quizzes you — **strictly from your own documents**.
-No hallucinations, no internet required, everything stays on your machine.
+Assistente di studio locale per la preparazione ai concorsi pubblici.
 
----
+Lavora solo sui materiali caricati dall'utente, in italiano, con modalità reference, quiz e ripasso.
 
-## How It Works
+## Caratteristiche principali
 
-1. You drop your study materials (PDF, DOCX, TXT, MD) into a folder.
-2. The agent indexes them using local embeddings (runs entirely offline).
-3. You choose a mode: ask it questions, or have it quiz you.
-4. Every answer and every question is grounded in your documents — nothing is made up.
+- uso completamente locale tramite Ollama
+- grounding sui materiali di studio caricati
+- supporto a cartella intera o file singolo tramite `study_material`
+- retrieval ibrido vettoriale + lessicale
+- quiz con domande aperte orientate a risposte da prova scritta
+- ripasso delle domande date in modo errato o parzialmente corretto
+- feedback che separa chiaramente:
+  - contenuto
+  - forma italiana
 
----
+## Requisiti
 
-## Requirements
+- Python 3.10+
+- Ollama installato e in esecuzione
+- macchina consigliata: 16 GB RAM + 6 GB VRAM
 
-| What | Details |
-|------|---------|
-| Python | 3.10 or newer |
-| RAM | 8–16 GB (16 GB recommended) |
-| Disk | ~5–10 GB for the model |
-| OS | macOS, Windows, Linux |
+## Modello consigliato
 
----
+Default consigliato in `config.yaml`:
 
-## First-Time Setup (do this once)
-
-### Step 1 — Install Ollama
-Download and install from **[ollama.com/download](https://ollama.com/download)**
-
-- **macOS**: Download the `.dmg`, open it, drag to Applications.
-- **Windows**: Download the `.exe` installer and run it.
-- **Linux**: `curl -fsSL https://ollama.com/install.sh | sh`
-
-### Step 2 — Install Python (if you don't have it)
-Download from **[python.org/downloads](https://www.python.org/downloads/)**
-
-> Windows: During installation, **check "Add Python to PATH"**.
-
-### Step 3 — Run setup
-
-Open a terminal in this folder and run:
-
-```bash
-python setup.py
+```yaml
+ollama_model: "qwen2.5:7b"
 ```
 
-This will install all dependencies and create your `materials/` folder.
+Subito sotto, la shortlist finale stimata dei 5 modelli migliori da provare, dal meno complesso al piu complesso, e:
 
----
+- `qwen2.5:3b`
+- `gemma3:4b`
+- `qwen3:4b`
+- `qwen3.5:4b`
+- `qwen3:8b`
 
-## Starting the Agent
+Altri modelli suggeriti sono commentati direttamente in `config.yaml`.
 
-### Option A — Double-click launcher
-- **macOS/Linux**: Double-click `start.sh`  
-  *(First time: right-click → Open, to bypass Gatekeeper)*
-- **Windows**: Double-click `start.bat`
+## Avvio rapido
 
-### Option B — Terminal
+1. Avvia Ollama:
+
 ```bash
-# Make sure Ollama is running first
 ollama serve
+```
 
-# Then in a new terminal, from the study-agent folder:
+2. Avvia il progetto:
+
+```bash
 python main.py
 ```
 
----
-
-## Adding Your Study Materials
-
-Drop files into the `materials/` folder. Supported formats:
-- **PDF** (`.pdf`)
-- **Word** (`.docx`)
-- **Plain text** (`.txt`)
-- **Markdown** (`.md`)
-
-Subfolders work fine — the agent scans everything recursively.
-
-The agent auto-detects new and changed files every time you start it.
-
-To force a full reindex (e.g., after deleting files):
-```bash
-python main.py --reindex
-```
-
----
-
-## Switching Subjects
-
-### Option A — Swap folder contents
-Replace the files in `materials/` and run `python main.py --reindex`.
-
-### Option B — Multiple subject folders
-Keep separate folders and point to them at launch:
-```bash
-python main.py --folder ./materials/biology
-python main.py --folder ./materials/chemistry
-python main.py --folder /Users/yourname/Documents/law-notes
-```
-
-Or permanently change `study_folder` in `config.yaml`.
-
----
-
-## Modes
-
-### 🔵 Q&A Mode
-You ask, the agent answers — only from your documents.
-
-- Type your question naturally.
-- The agent shows which document the answer came from.
-- It'll tell you honestly if the answer isn't in your materials.
-- Conversation history is maintained within a session.
-
-**Commands in Q&A mode:**
-| Command | Effect |
-|---------|--------|
-| `/back` | Return to main menu |
-| `/sources` | Toggle source citations on/off |
-| `/clear` | Clear conversation history |
-| `/files` | List indexed documents |
-
-### 🟡 Quiz Mode
-The agent asks, you answer, it evaluates.
-
-- Choose how many questions.
-- Each question is generated from a random part of your materials.
-- After you answer, the agent evaluates: correct / partial / wrong.
-- Feedback includes what you got right, what you missed, and the correct answer.
-- Final score shown at the end.
-
-**Commands in Quiz mode:**
-| Command | Effect |
-|---------|--------|
-| `/back` | Return to main menu |
-| `/skip` | Skip a question |
-
----
-
-## Customizing Behavior
-
-Edit `AGENT.md` to change how the agent behaves:
-- Tone (encouraging, strict, casual…)
-- Difficulty adaptation rules
-- How it evaluates partial answers
-- Response language (auto-detects by default)
-
-This file works just like `CLAUDE.md` in Claude Code — it's the agent's "instruction manual".
-
-Edit `config.yaml` to change:
-- Study folder path
-- AI model (see model recommendations below)
-- How many document chunks to retrieve per query
-- Quiz session length
-- Whether to show source citations
-
----
-
-## Model Recommendations (16 GB RAM)
-
-| Model | Command | Notes |
-|-------|---------|-------|
-| `mistral:7b` | `ollama pull mistral:7b` | **Recommended default** — fast, accurate |
-| `llama3.1:8b` | `ollama pull llama3.1:8b` | Higher quality, a bit slower |
-| `llama3.2:3b` | `ollama pull llama3.2:3b` | Very fast, good for quick use |
-| `phi3:mini` | `ollama pull phi3:mini` | Smallest/fastest option |
-
-Change model in `config.yaml`:
-```yaml
-ollama_model: "llama3.1:8b"
-```
-
----
-
-## Command-Line Options
+3. Oppure punta a un materiale specifico:
 
 ```bash
-python main.py --help                          # show options
-python main.py --config other-config.yaml      # use a different config
-python main.py --folder ./materials/history    # override study folder
-python main.py --model llama3.2:3b             # override model
-python main.py --reindex                       # force reindex and exit
+python main.py --material ./materials/diritto
+python main.py --material ./materials/diritto/manuale.pdf
 ```
 
----
+## Configurazione
 
-## Troubleshooting
+La configurazione principale è in `config.yaml`.
 
-**"Ollama is not running"**  
-→ Run `ollama serve` in a terminal and keep it open.
+Chiavi importanti:
 
-**"Model not found"**  
-→ The agent will auto-download it on first run. Takes a few minutes once.
+- `study_material`: file o cartella di studio
+- `ollama_model`: modello LLM
+- `embedding_model`: modello embeddings
+- `retrieval_top_k`: numero di chunk finali
+- `retrieval_candidate_k`: candidati pre-fusione
+- `retrieval_min_relevance`: soglia minima di rilevanza
+- `chunk_size`, `chunk_overlap`: chunking del testo
+- `agent_config`: file prompt/rules (`AGENT.md`)
 
-**"No relevant content found"**  
-→ Try rephrasing. Or check that you loaded the right folder.
+`study_folder` è ancora accettato come alias legacy, ma la chiave canonica è `study_material`.
 
-**Answers seem unrelated to my documents**  
-→ Run `python main.py --reindex` to force a fresh index.
+## Modalità
 
-**Slow responses**  
-→ Switch to a smaller model in `config.yaml` (e.g., `llama3.2:3b`).
+### 1. Modalita Reference
 
----
+L'utente fa domande sui materiali caricati.
 
-## Project Structure
+- retrieval history-aware per follow-up brevi o ambigui
+- risposta grounded sui chunk recuperati
+- se l'informazione non è supportata dai materiali, l'agente si astiene
 
-```
+### 2. Modalita Quiz
+
+L'agente propone domande aperte da concorso.
+
+- contesto piccolo e grounded
+- preload della prossima domanda mentre l'utente legge il feedback
+- `/skip` sostituisce la domanda con una nuova
+- feedback con classificazione:
+  - `corretto`
+  - `parzialmente corretto`
+  - `errato`
+
+Il feedback separa sempre:
+
+- `Contenuto`
+- `Forma italiana`
+- `Risposta attesa`
+- `Riferimenti`
+
+### 3. Modalita Ripasso
+
+Ripropone domande già sbagliate o parzialmente corrette.
+
+- namespace separato per il materiale corrente
+- funziona sia con file singolo sia con cartella
+- usa uno storage locale in `.study_agent_review/`
+
+## OCR e PDF con immagini
+
+Il sistema legge il testo estraibile dal PDF.
+
+Quindi:
+
+- PDF con layer OCR valido: sì, funziona
+- PDF solo immagini senza testo estraibile: no, o molto male
+
+## Struttura progetto
+
+```text
 study-agent/
-├── AGENT.md              ← behavior config (edit to customize the agent)
-├── config.yaml           ← settings (folder, model, etc.)
-├── main.py               ← entry point
-├── setup.py              ← one-time setup
-├── start.sh              ← macOS/Linux launcher
-├── start.bat             ← Windows launcher
-├── requirements.txt      ← Python dependencies
-├── materials/            ← put your study documents here
+├── AGENT.md
+├── config.yaml
+├── main.py
+├── requirements.txt
+├── materials/
 └── src/
-    ├── agent.py          ← Ollama integration, prompts
-    ├── rag.py            ← document indexing and retrieval
+    ├── agent.py
+    ├── prompt_config.py
+    ├── rag.py
+    ├── review_store.py
     ├── modes/
-    │   ├── qa.py         ← Q&A mode
-    │   └── quiz.py       ← Quiz mode
+    │   ├── qa.py
+    │   └── quiz.py
     └── ui/
-        └── cli.py        ← terminal interface
+        └── cli.py
 ```
 
----
+## Test
 
-## Privacy
+Esecuzione test:
 
-Everything runs locally:
-- The model runs on your machine via Ollama.
-- Documents are indexed locally in a `.study_agent_db/` folder.
-- No data ever leaves your machine.
-- No API keys required.
+```bash
+./.venv/bin/python -m pytest tests
+```
+
+## Note
+
+- Il DB vettoriale attuale è ChromaDB.
+- Gli indici sono isolati per materiale, embedding e parametri di chunking.
+- Se cambi embedding model o chunking, viene usato un namespace di indice diverso.

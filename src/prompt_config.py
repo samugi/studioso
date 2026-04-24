@@ -161,6 +161,8 @@ class PromptConfig:
             "fallback_expected_answer": self.messages["fallback_expected_answer"],
             "question_label": self.output_labels["question"],
             "source_label": self.output_labels["source"],
+            "content_label": self.output_labels["content"],
+            "italian_form_label": self.output_labels["italian_form"],
             "expected_answer_label": self.output_labels["expected_answer"],
             "references_label": self.output_labels["references"],
             "correct_label": self.quiz_labels["correct"],

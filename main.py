@@ -14,6 +14,13 @@ from rich.console import Console
 console = Console()
 
 
+def _resolve_path(config_base: Path, value: str, default: str) -> str:
+    resolved = Path(value or default)
+    if not resolved.is_absolute():
+        resolved = config_base / resolved
+    return str(resolved.resolve())
+
+
 def load_config(config_path: str = "config.yaml") -> dict:
     path = Path(config_path)
     if not path.exists():
@@ -23,17 +30,15 @@ def load_config(config_path: str = "config.yaml") -> dict:
     with open(path, encoding="utf-8") as f:
         config = yaml.safe_load(f)
 
-    # Resolve study_folder relative to config file location
-    study_folder = Path(config.get("study_folder", "./materials"))
-    if not study_folder.is_absolute():
-        study_folder = path.parent / study_folder
-    config["study_folder"] = str(study_folder.resolve())
+    study_material = config.get("study_material") or config.get("study_folder")
+    config["study_material"] = _resolve_path(path.parent, study_material, "./materials")
+    config["study_folder"] = config["study_material"]
 
-    # Resolve agent_config relative to config file location
-    agent_cfg = Path(config.get("agent_config", "./AGENT.md"))
-    if not agent_cfg.is_absolute():
-        agent_cfg = path.parent / agent_cfg
-    config["agent_config"] = str(agent_cfg.resolve())
+    config["agent_config"] = _resolve_path(
+        path.parent,
+        config.get("agent_config", "./AGENT.md"),
+        "./AGENT.md",
+    )
 
     return config
 
@@ -48,8 +53,12 @@ def main():
         help="Path to config.yaml (default: ./config.yaml)",
     )
     parser.add_argument(
+        "--material",
+        help="Override the study_material in config.yaml",
+    )
+    parser.add_argument(
         "--folder",
-        help="Override the study_folder in config.yaml",
+        help="Deprecated alias for --material",
     )
     parser.add_argument(
         "--model",
@@ -65,11 +74,13 @@ def main():
     config = load_config(args.config)
 
     # CLI overrides
-    if args.folder:
-        folder = Path(args.folder)
-        if not folder.is_absolute():
-            folder = Path.cwd() / folder
-        config["study_folder"] = str(folder.resolve())
+    material_override = args.material or args.folder
+    if material_override:
+        material = Path(material_override)
+        if not material.is_absolute():
+            material = Path.cwd() / material
+        config["study_material"] = str(material.resolve())
+        config["study_folder"] = config["study_material"]
     if args.model:
         config["ollama_model"] = args.model
 

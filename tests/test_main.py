@@ -48,11 +48,12 @@ body
             encoding="utf-8",
         )
         (root / "nested" / "config.yaml").write_text(
-            'study_folder: "./materials"\nagent_config: "./AGENT.md"\n',
+            'study_material: "./materials"\nagent_config: "./AGENT.md"\n',
             encoding="utf-8",
         )
 
         config = load_config(str(root / "nested" / "config.yaml"))
 
+        assert config["study_material"] == str((root / "nested" / "materials").resolve())
         assert config["study_folder"] == str((root / "nested" / "materials").resolve())
         assert config["agent_config"] == str((root / "nested" / "AGENT.md").resolve())

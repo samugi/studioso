@@ -97,9 +97,8 @@ def run_qa_mode(agent: StudyAgent, rag: RAGEngine):
                 console.print("[yellow]Nessun file indicizzato.[/yellow]")
             continue
 
-        # Retrieve relevant chunks
         with console.status("[dim]Ricerca nei materiali di studio...[/dim]", spinner="dots"):
-            chunks = rag.retrieve(user_input)
+            chunks = rag.retrieve(user_input, history=history)
 
         if not chunks:
             console.print(

@@ -37,7 +37,7 @@ def print_status_table(config: dict, rag_count: int, files: list[str], ollama_ok
     table.add_column("key", style="dim")
     table.add_column("value", style="bold")
 
-    table.add_row("Cartella studio", str(Path(config["study_folder"]).resolve()))
+    table.add_row("Materiale studio", str(Path(config["study_material"]).resolve()))
     table.add_row("Modello", config.get("ollama_model", "?"))
     table.add_row("Ollama", "[green]Running ✓[/green]" if ollama_ok else "[red]Not running ✗[/red]")
     table.add_row("Chunk indicizzati", str(rag_count))
@@ -91,16 +91,19 @@ def run_setup_check(agent, rag) -> bool:
                 console.print(f"  Prova manualmente: [bold]ollama pull {model}[/bold]")
                 all_ok = False
 
-    # Check study folder
-    study_folder = Path(agent.config["study_folder"]).resolve()
-    if not study_folder.exists():
-        console.print(f"[yellow]⚠ La cartella di studio non esiste: {study_folder}[/yellow]")
-        console.print("  La creo ora...")
-        study_folder.mkdir(parents=True, exist_ok=True)
-        console.print(f"  [green]✓ Creata: {study_folder}[/green]")
-        console.print(f"  [dim]Aggiungi i documenti di studio e riavvia, oppure usa /reindex.[/dim]")
+    study_material = Path(agent.config["study_material"]).resolve()
+    if not study_material.exists():
+        console.print(f"[yellow]⚠ Il materiale di studio non esiste: {study_material}[/yellow]")
+        if study_material.suffix:
+            console.print("  [dim]Il percorso sembra un file. Verifica che esista oppure indica una cartella valida.[/dim]")
+        else:
+            console.print("  Creo la cartella per te...")
+            study_material.mkdir(parents=True, exist_ok=True)
+            console.print(f"  [green]✓ Creata: {study_material}[/green]")
+            console.print("  [dim]Aggiungi i documenti di studio e riavvia, oppure usa /reindex.[/dim]")
     else:
-        console.print(f"[green]✓ Cartella di studio: {study_folder}[/green]")
+        label = "File di studio" if study_material.is_file() else "Cartella di studio"
+        console.print(f"[green]✓ {label}: {study_material}[/green]")
 
     console.print()
 
@@ -118,7 +121,7 @@ def run_setup_check(agent, rag) -> bool:
     elif count_before > 0:
         console.print(f"[green]✓ Documenti gia indicizzati ({count_before} chunk). Nessuna modifica rilevata.[/green]")
     else:
-        console.print(f"[yellow]⚠ Nessun documento trovato in {study_folder}[/yellow]")
+        console.print(f"[yellow]⚠ Nessun documento trovato in {study_material}[/yellow]")
         console.print(f"  Aggiungi file PDF, DOCX, TXT o MD e usa [bold]/reindex[/bold].")
 
     console.print()
@@ -127,7 +130,7 @@ def run_setup_check(agent, rag) -> bool:
 
 def run_menu(agent, rag):
     from src.modes.qa import run_qa_mode
-    from src.modes.quiz import run_quiz_mode
+    from src.modes.quiz import run_quiz_mode, run_review_mode
 
     print_banner()
 
@@ -145,14 +148,19 @@ def run_menu(agent, rag):
         ollama_ok=ollama_ok,
     )
 
+    if not sys.stdin.isatty():
+        console.print("[dim]Sessione non interattiva rilevata. Startup completato.[/dim]")
+        return
+
     session = PromptSession(style=MENU_STYLE)
 
     while True:
         console.print(Panel(
             "[bold cyan][1][/bold cyan] Modalita Reference — Fai domande sui materiali\n"
             "[bold yellow][2][/bold yellow] Modalita Quiz — Lascia che l'agente ti interroghi\n"
-            "[bold dim][3][/bold dim] [dim]Reindex   — Ricarica i documenti dalla cartella di studio[/dim]\n"
-            "[bold dim][4][/bold dim] [dim]Stato     — Mostra la configurazione corrente[/dim]\n"
+            "[bold magenta][3][/bold magenta] Modalita Ripasso — Ripassa le domande sbagliate\n"
+            "[bold dim][4][/bold dim] [dim]Reindex   — Ricarica i documenti dal materiale di studio[/dim]\n"
+            "[bold dim][5][/bold dim] [dim]Stato     — Mostra la configurazione corrente[/dim]\n"
             "[bold dim][q][/bold dim] [dim]Esci[/dim]",
             title="[bold]Menu principale[/bold]",
             border_style="bright_black",
@@ -176,13 +184,19 @@ def run_menu(agent, rag):
                 continue
             run_quiz_mode(agent, rag)
 
-        elif choice in ("3", "reindex", "r"):
+        elif choice in ("3", "review", "ripasso"):
+            if rag.collection_count() == 0:
+                console.print("[yellow]⚠ Nessun documento indicizzato. Aggiungi prima i file nel materiale di studio.[/yellow]\n")
+                continue
+            run_review_mode(agent, rag)
+
+        elif choice in ("4", "reindex", "r"):
             console.print()
             console.print("[dim]Reindicizzazione completa dei documenti...[/dim]")
             new_chunks = rag.ingest(force=True)
             console.print(f"[green]✓ Fatto. {new_chunks} chunk indicizzati.[/green]\n")
 
-        elif choice in ("4", "status", "s"):
+        elif choice in ("5", "status", "s"):
             ollama_ok, _ = agent.check_ollama()
             print_status_table(
                 config=agent.config,
@@ -195,6 +209,6 @@ def run_menu(agent, rag):
             break
 
         else:
-            console.print("[dim]Digita 1, 2, 3, 4 oppure q[/dim]\n")
+            console.print("[dim]Digita 1, 2, 3, 4, 5 oppure q[/dim]\n")
 
     console.print("\n[dim]Arrivederci. Buono studio.[/dim]\n")

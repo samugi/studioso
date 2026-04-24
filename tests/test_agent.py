@@ -115,6 +115,8 @@ def test_normalize_quiz_feedback_adds_missing_sections():
     )
 
     assert result.startswith("corretto:")
+    assert "Contenuto:" in result
+    assert "Forma italiana:" in result
     assert "Risposta attesa:" in result
     assert "Riferimenti: diritto.pdf" in result
 
@@ -134,6 +136,8 @@ def test_normalize_uses_configurable_labels():
 
     assert "(FONTE: fonte.pdf)" in question
     assert feedback.startswith("corretto:")
+    assert "Contenuto:" in feedback
+    assert "Forma italiana:" in feedback
     assert "Risposta attesa:" in feedback
 
 

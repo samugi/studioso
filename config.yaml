@@ -5,18 +5,24 @@
 # Path to the folder containing your study documents.
 # Can be absolute or relative to this config file.
 # Examples:
-#   study_folder: "./materials/biology"
-#   study_folder: "C:/Users/YourName/Documents/StudyMaterials"
-#   study_folder: "/Users/yourname/Documents/chemistry"
-study_folder: "./materials"
+#   study_material: "./materials/biology"
+#   study_material: "./materials/biology/notes.pdf"
+#   study_material: "C:/Users/YourName/Documents/StudyMaterials"
+#   study_material: "/Users/yourname/Documents/chemistry"
+study_material: "./materials/enti_locali/procedimento_amministrativo.pdf"
 
 # ─── Model Settings ───────────────────────────────────────────────────────────
-# Ollama model to use. Recommendations for 16GB RAM:
-#   - "mistral:7b"       ← best balance of speed and quality (recommended)
-#   - "llama3.2:3b"      ← faster, lighter, still good
-#   - "llama3.1:8b"      ← higher quality, a bit slower
-#   - "phi3:mini"        ← very fast, smaller model
-ollama_model: "mistral:7b"
+# Ollama model to use.
+# Main recommended model for this project:
+#   - "qwen2.5:7b"   ← current default: stable best balance for grounding, writing quality and local usage
+#
+# Final estimated top 5 for this project, ordered from less complex to more complex:
+#   1. "qwen2.5:3b"   ← lightest strong option
+#   2. "gemma3:4b"    ← efficient local compromise
+#   3. "qwen3:4b"     ← newer small model with high upside
+#   4. "qwen3.5:4b"   ← very recent 4B option, worth testing if available in Ollama
+#   5. "qwen3:8b"     ← strongest ambitious option still plausible on this machine
+ollama_model: "qwen2.5:7b"
 
 # Ollama server address (default is fine unless you changed it)
 ollama_url: "http://localhost:11434"
@@ -24,17 +30,32 @@ ollama_url: "http://localhost:11434"
 # ─── Embedding Model ──────────────────────────────────────────────────────────
 # Used to index your documents for accurate retrieval.
 # This runs locally and is downloaded automatically on first run.
-# Options: "all-MiniLM-L6-v2" (fast, small) or "all-mpnet-base-v2" (better quality)
-embedding_model: "all-MiniLM-L6-v2"
+# Recommended for Italian / multilingual study materials:
+#   - "intfloat/multilingual-e5-base" ← recommended
+#   - "all-MiniLM-L6-v2"              ← lighter fallback
+embedding_model: "intfloat/multilingual-e5-base"
 
 # ─── Retrieval Settings ───────────────────────────────────────────────────────
 # How many document chunks to retrieve per query.
-# Higher = more context, but slower. Range: 3–10
-retrieval_top_k: 5
+# Higher = more context, but too high can reduce grounding quality on smaller models.
+retrieval_top_k: 6
+
+# Number of candidates gathered before hybrid re-ranking.
+retrieval_candidate_k: 18
+
+# Minimum fused relevance required for a chunk to be used.
+retrieval_min_relevance: 0.35
+
+# Hybrid retrieval weighting.
+retrieval_vector_weight: 0.75
+retrieval_lexical_weight: 0.25
+
+# Treat short or ambiguous follow-up questions as contextual follow-ups.
+reference_followup_max_chars: 80
 
 # Size of each text chunk (in characters) when indexing documents.
 # Smaller = more precise retrieval. Larger = more context per chunk.
-chunk_size: 800
+chunk_size: 600
 
 # Overlap between chunks (prevents cutting off context at boundaries)
 chunk_overlap: 100

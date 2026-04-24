@@ -1,6 +1,7 @@
 from unittest.mock import Mock
 
 from src.modes.quiz import QuestionPrefetcher
+from src.review_store import ReviewStore
 
 
 def test_prefetcher_preloads_and_consumes_next_question():
@@ -18,10 +19,10 @@ def test_prefetcher_preloads_and_consumes_next_question():
     prefetcher = QuestionPrefetcher(agent, rag)
     prefetcher.start(["Prima domanda?"])
 
-    question, chunks = prefetcher.consume(["Prima domanda?"])
+    question_data = prefetcher.consume(["Prima domanda?"])
 
-    assert question.startswith("Domanda pronta?")
-    assert len(chunks) == 5
+    assert question_data["text"].startswith("Domanda pronta?")
+    assert len(question_data["source_chunks"]) == 5
     agent.generate_question.assert_called_once()
 
 
@@ -38,7 +39,49 @@ def test_prefetcher_falls_back_to_sync_generation_if_needed():
     agent.generate_question.return_value = "Domanda sync?\n\n(Fonte: a.txt)"
 
     prefetcher = QuestionPrefetcher(agent, rag)
-    question, chunks = prefetcher.consume([])
+    question_data = prefetcher.consume([])
 
-    assert question.startswith("Domanda sync?")
-    assert len(chunks) == 5
+    assert question_data["text"].startswith("Domanda sync?")
+    assert len(question_data["source_chunks"]) == 5
+
+
+def test_review_store_is_namespaced_by_study_material(tmp_path):
+    first = tmp_path / "a" / "material.pdf"
+    second = tmp_path / "b" / "material.pdf"
+    first.parent.mkdir(parents=True)
+    second.parent.mkdir(parents=True)
+    first.write_text("x", encoding="utf-8")
+    second.write_text("y", encoding="utf-8")
+
+    first_store = ReviewStore(str(first))
+    second_store = ReviewStore(str(second))
+
+    assert first_store.path != second_store.path
+
+
+def test_review_store_persists_only_wrong_or_partial_questions(tmp_path):
+    material = tmp_path / "material.pdf"
+    material.write_text("x", encoding="utf-8")
+    store = ReviewStore(str(material))
+
+    question_data = {"text": "Domanda?", "source_chunks": [{"id": "1", "text": "a"}]}
+    store.add(question_data, "corretto")
+    assert store.list_all() == []
+
+    store.add(question_data, "errato")
+    assert len(store.list_all()) == 1
+    assert store.list_all()[0]["text"] == "Domanda?"
+
+
+def test_review_store_pop_many_removes_returned_items(tmp_path):
+    material = tmp_path / "material.pdf"
+    material.write_text("x", encoding="utf-8")
+    store = ReviewStore(str(material))
+
+    store.add({"text": "Q1", "source_chunks": []}, "errato")
+    store.add({"text": "Q2", "source_chunks": []}, "parzialmente corretto")
+
+    popped = store.pop_many(1)
+
+    assert [item["text"] for item in popped] == ["Q1"]
+    assert [item["text"] for item in store.list_all()] == ["Q2"]
