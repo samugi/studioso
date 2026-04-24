@@ -34,7 +34,7 @@ def format_sources(chunks: list[dict], excerpt_length: int = 200) -> str:
         excerpt = data["text"][:excerpt_length].replace("\n", " ").strip()
         if len(data["text"]) > excerpt_length:
             excerpt += "…"
-        lines.append(f"📄 **{fn}** (relevance: {data['relevance']:.0%})\n   _{excerpt}_")
+        lines.append(f"**{fn}** (rilevanza: {data['relevance']:.0%})\n_{excerpt}_")
 
     return "\n\n".join(lines) if lines else ""
 
@@ -42,9 +42,9 @@ def format_sources(chunks: list[dict], excerpt_length: int = 200) -> str:
 def run_qa_mode(agent: StudyAgent, rag: RAGEngine):
     console.print()
     console.print(Panel(
-        "[bold cyan]Q&A Mode[/bold cyan]\n"
-        "[dim]Ask anything about your study materials.\n"
-        "Type [bold]/back[/bold] to return to the menu, [bold]/sources[/bold] to toggle source display.[/dim]",
+        "[bold cyan]Modalita Reference[/bold cyan]\n"
+        "[dim]Fai domande sui tuoi materiali di studio.\n"
+        "Comandi: [bold]/back[/bold] per tornare al menu, [bold]/sources[/bold] per mostrare o nascondere le fonti.[/dim]",
         border_style="cyan",
         expand=False,
     ))
@@ -56,7 +56,7 @@ def run_qa_mode(agent: StudyAgent, rag: RAGEngine):
 
     while True:
         try:
-            user_input = session.prompt("You › ").strip()
+            user_input = session.prompt("Tu › ").strip()
         except (KeyboardInterrupt, EOFError):
             break
 
@@ -69,48 +69,48 @@ def run_qa_mode(agent: StudyAgent, rag: RAGEngine):
 
         if user_input.lower() == "/sources":
             show_sources = not show_sources
-            state = "ON" if show_sources else "OFF"
-            console.print(f"[dim]Source display: {state}[/dim]")
+            state = "attiva" if show_sources else "disattivata"
+            console.print(f"[dim]Visualizzazione fonti: {state}[/dim]")
             continue
 
         if user_input.lower() == "/clear":
             history.clear()
-            console.print("[dim]Conversation history cleared.[/dim]")
+            console.print("[dim]Cronologia conversazione cancellata.[/dim]")
             continue
 
         if user_input.lower() == "/help":
             console.print(
-                "[dim]/back[/dim] — return to menu\n"
-                "[dim]/sources[/dim] — toggle source citations\n"
-                "[dim]/clear[/dim] — clear conversation history\n"
-                "[dim]/files[/dim] — list indexed files"
+                "[dim]/back[/dim] — torna al menu\n"
+                "[dim]/sources[/dim] — mostra o nasconde le fonti\n"
+                "[dim]/clear[/dim] — cancella la cronologia\n"
+                "[dim]/files[/dim] — elenca i file indicizzati"
             )
             continue
 
         if user_input.lower() == "/files":
             files = rag.indexed_files()
             if files:
-                console.print("[dim]Indexed files:[/dim]")
+                console.print("[dim]File indicizzati:[/dim]")
                 for f in files:
-                    console.print(f"  [cyan]•[/cyan] {f}")
+                    console.print(f"  [cyan]-[/cyan] {f}")
             else:
-                console.print("[yellow]No files indexed yet.[/yellow]")
+                console.print("[yellow]Nessun file indicizzato.[/yellow]")
             continue
 
         # Retrieve relevant chunks
-        with console.status("[dim]Searching study materials...[/dim]", spinner="dots"):
+        with console.status("[dim]Ricerca nei materiali di studio...[/dim]", spinner="dots"):
             chunks = rag.retrieve(user_input)
 
         if not chunks:
             console.print(
-                "\n[yellow]⚠ No relevant content found in your study materials for that question.\n"
-                "Try rephrasing, or check that the right folder is loaded.[/yellow]\n"
+                "\n[yellow]Non ho trovato contenuti rilevanti nei materiali di studio per questa domanda.\n"
+                "Prova a riformularla oppure verifica di aver caricato la cartella corretta.[/yellow]\n"
             )
             continue
 
         # Stream response
         console.print()
-        console.print("[bold green]Agent ›[/bold green]")
+        console.print("[bold green]Assistente[/bold green]")
         full_response = ""
         try:
             for token in agent.answer_question_stream(user_input, chunks, history):
@@ -118,8 +118,8 @@ def run_qa_mode(agent: StudyAgent, rag: RAGEngine):
                 full_response += token
             console.print()  # newline after stream
         except Exception as e:
-            console.print(f"\n[red]Error communicating with Ollama: {e}[/red]")
-            console.print("[dim]Make sure Ollama is running: [bold]ollama serve[/bold][/dim]")
+            console.print(f"\n[red]Errore nella comunicazione con Ollama: {e}[/red]")
+            console.print("[dim]Verifica che Ollama sia in esecuzione: [bold]ollama serve[/bold][/dim]")
             continue
 
         # Show sources
@@ -129,7 +129,7 @@ def run_qa_mode(agent: StudyAgent, rag: RAGEngine):
             if sources_text:
                 console.print(Panel(
                     Markdown(sources_text),
-                    title="[dim]Sources[/dim]",
+                    title="[dim]Fonti[/dim]",
                     border_style="dim",
                     expand=False,
                 ))

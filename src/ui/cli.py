@@ -24,7 +24,7 @@ BANNER = """
  ╔═══════════════════════════════╗
  ║        STUDY  AGENT          ║
  ╚═══════════════════════════════╝
-[/bold cyan][dim]  Powered by Ollama · Grounded in your documents[/dim]
+[/bold cyan][dim]  Powered by Ollama · Basato sui tuoi documenti[/dim]
 """
 
 
@@ -37,15 +37,15 @@ def print_status_table(config: dict, rag_count: int, files: list[str], ollama_ok
     table.add_column("key", style="dim")
     table.add_column("value", style="bold")
 
-    table.add_row("Study folder", str(Path(config["study_folder"]).resolve()))
-    table.add_row("Model", config.get("ollama_model", "?"))
+    table.add_row("Cartella studio", str(Path(config["study_folder"]).resolve()))
+    table.add_row("Modello", config.get("ollama_model", "?"))
     table.add_row("Ollama", "[green]Running ✓[/green]" if ollama_ok else "[red]Not running ✗[/red]")
-    table.add_row("Indexed chunks", str(rag_count))
+    table.add_row("Chunk indicizzati", str(rag_count))
 
     if files:
-        table.add_row("Documents", ", ".join(files[:3]) + (f" (+{len(files)-3} more)" if len(files) > 3 else ""))
+        table.add_row("Documenti", ", ".join(files[:3]) + (f" (+{len(files)-3} altri)" if len(files) > 3 else ""))
     else:
-        table.add_row("Documents", "[yellow]None indexed[/yellow]")
+        table.add_row("Documenti", "[yellow]Nessuno indicizzato[/yellow]")
 
     console.print(Panel(table, title="[dim]Status[/dim]", border_style="dim", expand=False))
     console.print()
@@ -53,7 +53,7 @@ def print_status_table(config: dict, rag_count: int, files: list[str], ollama_ok
 
 def run_setup_check(agent, rag) -> bool:
     """Run startup checks: Ollama, model, study folder. Returns True if ready."""
-    console.print("[dim]Running startup checks...[/dim]")
+    console.print("[dim]Controlli iniziali in corso...[/dim]")
     console.print()
 
     all_ok = True
@@ -61,9 +61,9 @@ def run_setup_check(agent, rag) -> bool:
     # Check Ollama
     ollama_ok, info = agent.check_ollama()
     if not ollama_ok:
-        console.print("[red]✗ Ollama is not running.[/red]")
-        console.print("  Start it with: [bold]ollama serve[/bold]")
-        console.print(f"  Error: {info}")
+        console.print("[red]✗ Ollama non e in esecuzione.[/red]")
+        console.print("  Avvialo con: [bold]ollama serve[/bold]")
+        console.print(f"  Errore: {info}")
         all_ok = False
     else:
         # Check model
@@ -73,11 +73,11 @@ def run_setup_check(agent, rag) -> bool:
         model_found = any(normalize(m) == normalize(model) for m in available)
 
         if model_found:
-            console.print(f"[green]✓ Ollama running, model '{model}' available.[/green]")
+            console.print(f"[green]✓ Ollama attivo, modello '{model}' disponibile.[/green]")
         else:
-            console.print(f"[yellow]⚠ Model '{model}' not found locally.[/yellow]")
-            console.print(f"  Available models: {', '.join(available) if available else 'none'}")
-            console.print(f"  Pulling '{model}' from Ollama... (this may take a few minutes the first time)")
+            console.print(f"[yellow]⚠ Modello '{model}' non trovato in locale.[/yellow]")
+            console.print(f"  Modelli disponibili: {', '.join(available) if available else 'nessuno'}")
+            console.print(f"  Scarico '{model}' da Ollama... (la prima volta puo richiedere alcuni minuti)")
             console.print()
             try:
                 last_status = ""
@@ -85,41 +85,41 @@ def run_setup_check(agent, rag) -> bool:
                     if status and status != last_status:
                         console.print(f"  [dim]{status}[/dim]", end="\r")
                         last_status = status
-                console.print(f"\n[green]✓ Model '{model}' downloaded.[/green]")
+                console.print(f"\n[green]✓ Modello '{model}' scaricato.[/green]")
             except Exception as e:
-                console.print(f"\n[red]Failed to pull model: {e}[/red]")
-                console.print(f"  Try manually: [bold]ollama pull {model}[/bold]")
+                console.print(f"\n[red]Download del modello non riuscito: {e}[/red]")
+                console.print(f"  Prova manualmente: [bold]ollama pull {model}[/bold]")
                 all_ok = False
 
     # Check study folder
     study_folder = Path(agent.config["study_folder"]).resolve()
     if not study_folder.exists():
-        console.print(f"[yellow]⚠ Study folder does not exist: {study_folder}[/yellow]")
-        console.print("  Creating it for you...")
+        console.print(f"[yellow]⚠ La cartella di studio non esiste: {study_folder}[/yellow]")
+        console.print("  La creo ora...")
         study_folder.mkdir(parents=True, exist_ok=True)
-        console.print(f"  [green]✓ Created: {study_folder}[/green]")
-        console.print(f"  [dim]Add your study documents there and restart, or type /reindex.[/dim]")
+        console.print(f"  [green]✓ Creata: {study_folder}[/green]")
+        console.print(f"  [dim]Aggiungi i documenti di studio e riavvia, oppure usa /reindex.[/dim]")
     else:
-        console.print(f"[green]✓ Study folder: {study_folder}[/green]")
+        console.print(f"[green]✓ Cartella di studio: {study_folder}[/green]")
 
     console.print()
 
     if not all_ok:
-        console.print("[red]Some checks failed. Fix the issues above and restart.[/red]")
+        console.print("[red]Alcuni controlli non sono andati a buon fine. Correggi i problemi e riavvia.[/red]")
         return False
 
     # Ingest documents
     count_before = rag.collection_count()
-    console.print("[dim]Scanning for new/updated documents...[/dim]")
+    console.print("[dim]Scansione dei documenti nuovi o aggiornati...[/dim]")
     new_chunks = rag.ingest()
 
     if new_chunks > 0:
-        console.print(f"[green]✓ Indexed {new_chunks} new chunks from your documents.[/green]")
+        console.print(f"[green]✓ Indicizzati {new_chunks} nuovi chunk dai tuoi documenti.[/green]")
     elif count_before > 0:
-        console.print(f"[green]✓ Documents already indexed ({count_before} chunks). No changes detected.[/green]")
+        console.print(f"[green]✓ Documenti gia indicizzati ({count_before} chunk). Nessuna modifica rilevata.[/green]")
     else:
-        console.print(f"[yellow]⚠ No documents found in {study_folder}[/yellow]")
-        console.print(f"  Add PDF, DOCX, TXT, or MD files and type [bold]/reindex[/bold].")
+        console.print(f"[yellow]⚠ Nessun documento trovato in {study_folder}[/yellow]")
+        console.print(f"  Aggiungi file PDF, DOCX, TXT o MD e usa [bold]/reindex[/bold].")
 
     console.print()
     return True
@@ -133,7 +133,7 @@ def run_menu(agent, rag):
 
     ready = run_setup_check(agent, rag)
     if not ready:
-        console.print("[dim]Press Enter to exit, or fix the issues and restart.[/dim]")
+        console.print("[dim]Premi Invio per uscire, oppure correggi i problemi e riavvia.[/dim]")
         input()
         sys.exit(1)
 
@@ -149,38 +149,38 @@ def run_menu(agent, rag):
 
     while True:
         console.print(Panel(
-            "[bold cyan][1][/bold cyan] Q&A Mode  — Ask questions about your materials\n"
-            "[bold yellow][2][/bold yellow] Quiz Mode — Let the agent test you\n"
-            "[bold dim][3][/bold dim] [dim]Reindex   — Reload documents from the study folder[/dim]\n"
-            "[bold dim][4][/bold dim] [dim]Status    — Show current configuration[/dim]\n"
-            "[bold dim][q][/bold dim] [dim]Quit[/dim]",
-            title="[bold]Main Menu[/bold]",
+            "[bold cyan][1][/bold cyan] Modalita Reference — Fai domande sui materiali\n"
+            "[bold yellow][2][/bold yellow] Modalita Quiz — Lascia che l'agente ti interroghi\n"
+            "[bold dim][3][/bold dim] [dim]Reindex   — Ricarica i documenti dalla cartella di studio[/dim]\n"
+            "[bold dim][4][/bold dim] [dim]Stato     — Mostra la configurazione corrente[/dim]\n"
+            "[bold dim][q][/bold dim] [dim]Esci[/dim]",
+            title="[bold]Menu principale[/bold]",
             border_style="bright_black",
             expand=False,
         ))
 
         try:
-            choice = session.prompt("Choose › ").strip().lower()
+            choice = session.prompt("Scelta › ").strip().lower()
         except (KeyboardInterrupt, EOFError):
             break
 
         if choice in ("1", "qa", "q&a", "ask"):
             if rag.collection_count() == 0:
-                console.print("[yellow]⚠ No documents indexed. Add files to your study folder first.[/yellow]\n")
+                console.print("[yellow]⚠ Nessun documento indicizzato. Aggiungi prima i file nella cartella di studio.[/yellow]\n")
                 continue
             run_qa_mode(agent, rag)
 
         elif choice in ("2", "quiz", "test"):
             if rag.collection_count() == 0:
-                console.print("[yellow]⚠ No documents indexed. Add files to your study folder first.[/yellow]\n")
+                console.print("[yellow]⚠ Nessun documento indicizzato. Aggiungi prima i file nella cartella di studio.[/yellow]\n")
                 continue
             run_quiz_mode(agent, rag)
 
         elif choice in ("3", "reindex", "r"):
             console.print()
-            console.print("[dim]Reindexing all documents (force reload)...[/dim]")
+            console.print("[dim]Reindicizzazione completa dei documenti...[/dim]")
             new_chunks = rag.ingest(force=True)
-            console.print(f"[green]✓ Done. {new_chunks} chunks indexed.[/green]\n")
+            console.print(f"[green]✓ Fatto. {new_chunks} chunk indicizzati.[/green]\n")
 
         elif choice in ("4", "status", "s"):
             ollama_ok, _ = agent.check_ollama()
@@ -195,6 +195,6 @@ def run_menu(agent, rag):
             break
 
         else:
-            console.print("[dim]Type 1, 2, 3, 4, or q[/dim]\n")
+            console.print("[dim]Digita 1, 2, 3, 4 oppure q[/dim]\n")
 
-    console.print("\n[dim]Goodbye! Keep studying. 📚[/dim]\n")
+    console.print("\n[dim]Arrivederci. Buono studio.[/dim]\n")
