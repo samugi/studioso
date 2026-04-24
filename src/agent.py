@@ -9,12 +9,9 @@ from typing import Iterator
 import ollama
 from rich.console import Console
 
-console = Console()
+from src.prompt_config import PromptConfig
 
-NO_INFO_MESSAGE = (
-    "Non sono riuscito a trovare questa informazione nei tuoi materiali di studio. "
-    "Prova a riformulare la domanda oppure verifica di aver caricato la cartella corretta."
-)
+console = Console()
 
 
 class StudyAgent:
@@ -24,17 +21,16 @@ class StudyAgent:
         self.ollama_url = config.get("ollama_url", "http://localhost:11434")
         self.show_sources = config.get("show_sources", True)
         self.source_excerpt_length = config.get("source_excerpt_length", 200)
-        self._behavior = self._load_behavior(config.get("agent_config", "./AGENT.md"))
+        self.prompt_config = self._load_prompt_config(
+            config.get("agent_config", "./AGENT.md")
+        )
         self._client = ollama.Client(host=self.ollama_url)
 
-    def _load_behavior(self, agent_config_path: str) -> str:
+    def _load_prompt_config(self, agent_config_path: str) -> PromptConfig:
         path = Path(agent_config_path)
         if not path.is_absolute():
-            # Resolve relative to CWD
             path = Path.cwd() / path
-        if path.exists():
-            return path.read_text(encoding="utf-8")
-        return "Tu sei un assistente allo studio. Rispondi solo basandoti sul materiale/contesto fornito."
+        return PromptConfig.load(path)
 
     def check_ollama(self) -> tuple[bool, str]:
         """Check if Ollama is running and the model is available."""
@@ -129,83 +125,19 @@ class StudyAgent:
 
     def _build_reference_mode_system_prompt(self, context_chunks: list[dict]) -> str:
         context_str = self._format_context(context_chunks)
-        return f"""Tu sei un assistente allo studio per concorsi pubblici.
-
-{self._behavior}
-
----
-
-CONTESTO DEL MATERIALE DI STUDIO:
-{context_str}
-
----
-
-REGOLE OPERATIVE PER LA MODALITA REFERENCE:
-- Scrivi sempre e solo in italiano.
-- Rispondi esclusivamente usando il contesto sopra.
-- Non usare conoscenze esterne, anche se conosci la risposta.
-- Non inventare, non completare i vuoti con supposizioni.
-- Se l'informazione non e presente nel contesto, rispondi esattamente con questa frase:
-  \"{NO_INFO_MESSAGE}\"
-- In questa modalita devi solo rispondere alla domanda dell'utente: non generare quiz, non proporre domande, non valutare risposte.
-- Indica sempre i riferimenti documentali usati nella risposta.
-"""
+        return self.prompt_config.render_prompt("reference_system", context=context_str)
 
     def _build_quiz_question_system_prompt(self, context_chunks: list[dict]) -> str:
         context_str = self._format_context(context_chunks, full_text=True)
-        return f"""Tu sei un assistente allo studio per concorsi pubblici che deve generare una sola domanda di quiz.
-
-{self._behavior}
-
----
-
-CONTESTO DEL MATERIALE DI STUDIO:
-{context_str}
-
----
-
-REGOLE OPERATIVE PER LA MODALITA QUIZ:
-- Scrivi sempre e solo in italiano.
-- Genera una sola domanda aperta, chiara e specifica, basata esclusivamente sul contesto.
-- Non fornire risposta, soluzione, suggerimenti, traccia di correzione o feedback.
-- Non fare commenti introduttivi o conclusivi.
-- Non simulare la risposta dell'utente.
-- Non mescolare domanda e spiegazione.
-- La domanda deve richiedere comprensione reale del materiale.
-
-FORMATO OBBLIGATORIO:
-DOMANDA: <testo della domanda>
-FONTE: <uno o piu nomi file del contesto>
-"""
+        return self.prompt_config.render_prompt(
+            "quiz_question_system", context=context_str
+        )
 
     def _build_quiz_evaluation_system_prompt(self, context_chunks: list[dict]) -> str:
         context_str = self._format_context(context_chunks, full_text=True)
-        return f"""Tu sei un correttore rigoroso di risposte per concorsi pubblici.
-
-{self._behavior}
-
----
-
-CONTESTO DEL MATERIALE DI STUDIO:
-{context_str}
-
----
-
-REGOLE OPERATIVE PER LA VALUTAZIONE QUIZ:
-- Scrivi sempre e solo in italiano.
-- Valuta la risposta ESCLUSIVAMENTE in base al contesto sopra.
-- Usa \"corretto\" solo se la risposta e sostanzialmente completa, precisa e senza errori rilevanti.
-- Usa \"parzialmente corretto\" solo se la risposta contiene almeno una parte significativa corretta ma e incompleta, imprecisa o manca passaggi essenziali.
-- Usa \"errato\" in tutti gli altri casi: risposta sbagliata, vaga, fuori tema, contraddittoria o troppo generica.
-- Se la risposta contiene errori sostanziali, NON classificarla come corretta per incoraggiamento.
-- Non usare etichette diverse da: corretto, parzialmente corretto, errato.
-- Non scrivere mai frasi come \"risposta corretta, bravo\" se la classificazione non e davvero \"corretto\".
-
-FORMATO OBBLIGATORIO:
-<etichetta>: <feedback breve e costruttivo>
-Risposta attesa: <risposta corretta o elementi essenziali attesi>
-Riferimenti: <uno o piu nomi file del contesto>
-"""
+        return self.prompt_config.render_prompt(
+            "quiz_evaluation_system", context=context_str
+        )
 
     def _default_references(self, context_chunks: list[dict]) -> str:
         filenames = []
@@ -310,29 +242,40 @@ Riferimenti: <uno o piu nomi file del contesto>
     ) -> str:
         """Rispondi a una domanda dell'utente usando solo il materiale fornito."""
         system = self._build_reference_mode_system_prompt(context_chunks)
-        return self._chat(system, question, history=history)
+        user_prompt = self.prompt_config.render_prompt(
+            "reference_user",
+            user_input=question,
+        )
+        return self._chat(system, user_prompt, history=history)
 
     def answer_question_stream(
         self, question: str, context_chunks: list[dict], history: list[dict] = None
     ) -> Iterator[str]:
         """Stream answer tokens."""
         system = self._build_reference_mode_system_prompt(context_chunks)
-        yield from self._chat_stream(system, question, history=history)
+        user_prompt = self.prompt_config.render_prompt(
+            "reference_user",
+            user_input=question,
+        )
+        yield from self._chat_stream(system, user_prompt, history=history)
 
     def generate_question(
         self, context_chunks: list[dict], previous_questions: list[str] = None
     ) -> str:
         """Generate a quiz question from context."""
         system = self._build_quiz_question_system_prompt(context_chunks)
-        avoid = ""
+        previous_questions_block = "-"
         if previous_questions:
-            avoid = "\n\nEvita di ripetere le domande precedenti:\n" + "\n".join(
+            previous_questions_block = "\n".join(
                 f"- {q}" for q in previous_questions[-5:]
             )
 
         raw_question = self._chat(
             system,
-            f"Genera una sola domanda da quiz basata sul materiale di studio.{avoid}",
+            self.prompt_config.render_prompt(
+                "quiz_question_user",
+                previous_questions=previous_questions_block,
+            ),
             temperature=0.3,
             num_predict=256,
         )
@@ -343,11 +286,11 @@ Riferimenti: <uno o piu nomi file del contesto>
     ) -> str:
         """Valuta la risposta dell'utente basandoti sul materiale di studio fornito."""
         system = self._build_quiz_evaluation_system_prompt(context_chunks)
-        prompt = f"""Domanda del Quiz: {question}
-
-Risposta dell'utente: {user_answer}
-
-Valuta la risposta seguendo rigorosamente il formato obbligatorio."""
+        prompt = self.prompt_config.render_prompt(
+            "quiz_evaluation_user",
+            question=question,
+            user_answer=user_answer,
+        )
         raw_feedback = self._chat(system, prompt, temperature=0.1, num_predict=512)
         return self._normalize_quiz_feedback(raw_feedback, context_chunks)
 

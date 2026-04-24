@@ -118,8 +118,9 @@ class RAGEngine:
         self.chunk_overlap = config.get("chunk_overlap", 100)
         self.top_k = config.get("retrieval_top_k", 5)
 
-        # ChromaDB stored next to the study folder
-        db_dir = self.study_folder.parent / ".study_agent_db" / self.study_folder.name
+        # ChromaDB is isolated per selected study folder or subfolder.
+        folder_key = hashlib.md5(str(self.study_folder).encode("utf-8")).hexdigest()[:12]
+        db_dir = self.study_folder.parent / ".study_agent_db" / f"{self.study_folder.name}_{folder_key}"
         db_dir.mkdir(parents=True, exist_ok=True)
         self.db_dir = db_dir
 
