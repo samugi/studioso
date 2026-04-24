@@ -68,7 +68,7 @@ def test_generate_question_uses_prompt_config_and_normalizes_output():
     ])
 
     assert result.startswith("Che cos'e un tributo?")
-    assert "(Fonte: diritto.pdf)" in result
+    assert "(FONTE: diritto.pdf)" in result
 
 
 def test_generate_question_strips_accidental_feedback_lines():
@@ -117,6 +117,24 @@ def test_normalize_quiz_feedback_adds_missing_sections():
     assert result.startswith("corretto:")
     assert "Risposta attesa:" in result
     assert "Riferimenti: diritto.pdf" in result
+
+
+def test_normalize_uses_configurable_labels():
+    client = FakeClient([])
+    agent = make_agent(client)
+
+    question = agent._normalize_quiz_question(
+        "DOMANDA: Qual e il principio?\nFONTE: fonte.pdf",
+        [{"text": "contesto", "filename": "fonte.pdf", "source": "fonte.pdf"}],
+    )
+    feedback = agent._normalize_quiz_feedback(
+        "corretto: bene",
+        [{"text": "contesto", "filename": "fonte.pdf", "source": "fonte.pdf"}],
+    )
+
+    assert "(FONTE: fonte.pdf)" in question
+    assert feedback.startswith("corretto:")
+    assert "Risposta attesa:" in feedback
 
 
 def test_answer_question_stream_uses_same_prompt_order():

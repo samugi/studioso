@@ -145,16 +145,24 @@ class StudyAgent:
             filename = chunk.get("filename")
             if filename and filename not in filenames:
                 filenames.append(filename)
-        return ", ".join(filenames[:3]) if filenames else "materiale di studio"
+        return ", ".join(filenames[:3]) if filenames else self.prompt_config.messages.get(
+            "default_references_fallback", "materials"
+        )
 
     def _normalize_quiz_question(self, raw_question: str, context_chunks: list[dict]) -> str:
-        question_match = re.search(r"(?im)^domanda\s*:\s*(.+)$", raw_question)
-        source_match = re.search(r"(?im)^fonte\s*:\s*(.+)$", raw_question)
+        question_label = re.escape(self.prompt_config.output_labels["question"])
+        source_label = re.escape(self.prompt_config.output_labels["source"])
+        question_match = re.search(rf"(?im)^{question_label}\s*:\s*(.+)$", raw_question)
+        source_match = re.search(rf"(?im)^{source_label}\s*:\s*(.+)$", raw_question)
 
         question = question_match.group(1).strip() if question_match else ""
         source = source_match.group(1).strip() if source_match else ""
 
         if not question:
+            stop_markers = [
+                re.escape(marker)
+                for marker in self.prompt_config.render_list("quiz_question_stop_markers")
+            ]
             collected = []
             for line in raw_question.splitlines():
                 stripped = line.strip().strip("-* ")
@@ -163,8 +171,8 @@ class StudyAgent:
                         break
                     continue
 
-                if re.match(
-                    r"(?i)^(fonte|risposta|soluzione|feedback|spiegazione|valutazione|corretto|parzialmente corretto|errato)\s*[:\-]",
+                if stop_markers and re.match(
+                    rf"(?i)^(?:{'|'.join(stop_markers)})\s*[:\-]",
                     stripped,
                 ):
                     break
@@ -173,45 +181,58 @@ class StudyAgent:
             question = " ".join(collected).strip()
 
         question = re.sub(r"\s+", " ", question)
-        question = re.sub(r"(?i)^domanda\s*[:\-]\s*", "", question).strip()
+        question = re.sub(rf"(?i)^{question_label}\s*[:\-]\s*", "", question).strip()
 
         if not question:
-            question = "Spiega i concetti principali contenuti nel brano selezionato."
+            question = self.prompt_config.messages["fallback_question"]
 
         if not question.endswith("?"):
             question += "?"
 
         references = source or self._default_references(context_chunks)
-        return f"{question}\n\n(Fonte: {references})"
+        return self.prompt_config.render_format(
+            "question_display",
+            question=question,
+            references=references,
+        )
 
     def extract_quiz_feedback_label(self, feedback: str) -> str:
         normalized = feedback.strip().lower()
-        if normalized.startswith("parzialmente corretto"):
-            return "parzialmente corretto"
-        if normalized.startswith("corretto"):
-            return "corretto"
-        if normalized.startswith("errato"):
-            return "errato"
+        labels = self.prompt_config.quiz_labels
+        if normalized.startswith(labels["partial"].lower()):
+            return labels["partial"]
+        if normalized.startswith(labels["correct"].lower()):
+            return labels["correct"]
+        if normalized.startswith(labels["wrong"].lower()):
+            return labels["wrong"]
 
+        candidates = [labels["partial"], labels["correct"], labels["wrong"]]
         fallback_match = re.search(
-            r"(?i)\b(parzialmente corretto|corretto|errato|errata|sbagliato)\b",
+            rf"(?i)\b({'|'.join(re.escape(value) for value in candidates)})\b",
             normalized,
         )
         if not fallback_match:
-            return "errato"
+            return labels["wrong"]
 
         label = fallback_match.group(1).lower()
-        if label == "parzialmente corretto":
-            return label
-        if label in {"errato", "errata", "sbagliato"}:
-            return "errato"
-        return "corretto"
+        if label == labels["partial"].lower():
+            return labels["partial"]
+        if label == labels["wrong"].lower():
+            return labels["wrong"]
+        return labels["correct"]
 
     def _normalize_quiz_feedback(self, raw_feedback: str, context_chunks: list[dict]) -> str:
         label = self.extract_quiz_feedback_label(raw_feedback)
         body = raw_feedback.strip()
         body = re.sub(r"(?im)^verdetto\s*:\s*", "", body, count=1).strip()
-        label_pattern = r"parzialmente corretto|corretto|errato|errata|sbagliato"
+        label_pattern = "|".join(
+            re.escape(value)
+            for value in (
+                self.prompt_config.quiz_labels["partial"],
+                self.prompt_config.quiz_labels["correct"],
+                self.prompt_config.quiz_labels["wrong"],
+            )
+        )
         body = re.sub(
             rf"(?is)^\s*(?:{label_pattern})\s*[:\-]?\s*",
             "",
@@ -220,22 +241,34 @@ class StudyAgent:
         ).strip()
 
         if not body:
-            body = (
-                "Consulta i riferimenti indicati e confronta la tua risposta con gli elementi "
-                "essenziali presenti nel materiale di studio."
-            )
+            body = self.prompt_config.messages["fallback_feedback_body"]
 
-        if not re.search(r"(?im)^risposta attesa\s*:", body):
+        expected_answer_label = re.escape(self.prompt_config.output_labels["expected_answer"])
+        references_label = re.escape(self.prompt_config.output_labels["references"])
+
+        if not re.search(rf"(?im)^{expected_answer_label}\s*:", body):
             body = (
                 f"{body.rstrip()}\n"
-                "Risposta attesa: verifica gli elementi essenziali indicati nei riferimenti e "
-                "confrontali con il testo corretto presente nel materiale di studio."
+                + self.prompt_config.render_format(
+                    "expected_answer_line",
+                    expected_answer=self.prompt_config.messages["fallback_expected_answer"],
+                )
             )
 
-        if not re.search(r"(?im)^riferimenti\s*:", body):
-            body = f"{body.rstrip()}\nRiferimenti: {self._default_references(context_chunks)}"
+        if not re.search(rf"(?im)^{references_label}\s*:", body):
+            body = (
+                f"{body.rstrip()}\n"
+                + self.prompt_config.render_format(
+                    "references_line",
+                    references=self._default_references(context_chunks),
+                )
+            )
 
-        return f"{label}: {body}".strip()
+        return self.prompt_config.render_format(
+            "normalized_feedback",
+            label=label,
+            body=body,
+        )
 
     def answer_question(
         self, question: str, context_chunks: list[dict], history: list[dict] = None

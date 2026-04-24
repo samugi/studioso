@@ -3,6 +3,7 @@ quiz.py — Quiz mode: agent asks questions, user answers, agent evaluates.
 """
 
 import random
+import threading
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
@@ -20,6 +21,81 @@ PROMPT_STYLE = Style.from_dict(
         "prompt": "#ffaa00 bold",
     }
 )
+
+
+def _sample_question_context(rag: RAGEngine) -> list[dict]:
+    all_chunks = rag.get_all_chunks_sample(n=15)
+    if not all_chunks:
+        return []
+    random.shuffle(all_chunks)
+    return all_chunks[:5]
+
+
+class QuestionPrefetcher:
+    def __init__(self, agent: StudyAgent, rag: RAGEngine):
+        self.agent = agent
+        self.rag = rag
+        self._lock = threading.Lock()
+        self._thread: threading.Thread | None = None
+        self._ready_question: tuple[str, list[dict]] | None = None
+        self._error: Exception | None = None
+
+    def _generate(self, previous_questions: list[str]):
+        try:
+            question_chunks = _sample_question_context(self.rag)
+            if not question_chunks:
+                raise RuntimeError("Nessun materiale di studio indicizzato.")
+            question = self.agent.generate_question(question_chunks, previous_questions)
+            with self._lock:
+                self._ready_question = (question, question_chunks)
+                self._error = None
+        except Exception as exc:
+            with self._lock:
+                self._ready_question = None
+                self._error = exc
+        finally:
+            with self._lock:
+                self._thread = None
+
+    def start(self, previous_questions: list[str]):
+        with self._lock:
+            if self._thread is not None or self._ready_question is not None:
+                return
+            self._error = None
+            self._thread = threading.Thread(
+                target=self._generate,
+                args=(list(previous_questions),),
+                daemon=True,
+            )
+            self._thread.start()
+
+    def consume(self, previous_questions: list[str]) -> tuple[str, list[dict]]:
+        thread = None
+        with self._lock:
+            if self._ready_question is not None:
+                result = self._ready_question
+                self._ready_question = None
+                return result
+            thread = self._thread
+
+        if thread is not None:
+            thread.join()
+
+        with self._lock:
+            if self._ready_question is not None:
+                result = self._ready_question
+                self._ready_question = None
+                return result
+            if self._error is not None:
+                error = self._error
+                self._error = None
+                raise error
+
+        question_chunks = _sample_question_context(self.rag)
+        if not question_chunks:
+            raise RuntimeError("Nessun materiale di studio indicizzato.")
+        question = self.agent.generate_question(question_chunks, previous_questions)
+        return question, question_chunks
 
 
 def run_quiz_mode(agent: StudyAgent, rag: RAGEngine):
@@ -57,6 +133,8 @@ def run_quiz_mode(agent: StudyAgent, rag: RAGEngine):
     wrong = 0
     skipped = 0
     previous_questions: list[str] = []
+    prefetcher = QuestionPrefetcher(agent, rag)
+    prefetcher.start(previous_questions)
 
     for q_num in range(1, n_questions + 1):
         console.print(
@@ -67,18 +145,14 @@ def run_quiz_mode(agent: StudyAgent, rag: RAGEngine):
         )
         console.print()
 
-        all_chunks = rag.get_all_chunks_sample(n=15)
-        if not all_chunks:
-            console.print(
-                "[red]Nessun materiale di studio indicizzato. Impossibile generare domande.[/red]"
-            )
-            break
-
-        random.shuffle(all_chunks)
-        question_chunks = all_chunks[:5]
-
         with console.status("[dim]Generazione della domanda...[/dim]", spinner="dots"):
-            question = agent.generate_question(question_chunks, previous_questions)
+            try:
+                question, question_chunks = prefetcher.consume(previous_questions)
+            except Exception as exc:
+                console.print(
+                    f"[red]Impossibile generare la domanda successiva: {exc}[/red]"
+                )
+                break
 
         previous_questions.append(question)
 
@@ -127,6 +201,9 @@ def run_quiz_mode(agent: StudyAgent, rag: RAGEngine):
         except Exception as e:
             console.print(f"\n[red]Errore durante la valutazione: {e}[/red]")
             continue
+
+        if q_num < n_questions:
+            prefetcher.start(previous_questions)
 
         label = agent.extract_quiz_feedback_label(full_eval)
 
