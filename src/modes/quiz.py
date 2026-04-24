@@ -309,7 +309,7 @@ def run_review_mode(agent: StudyAgent, rag: RAGEngine):
     if n_questions <= 0:
         return
 
-    queue = review_store.pop_many(n_questions)
+    queue = due_questions[:n_questions]
 
     def supplier(_previous_questions: list[str]) -> dict:
         if not queue:

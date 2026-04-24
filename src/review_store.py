@@ -32,19 +32,19 @@ class ReviewStore:
         )
 
     def add(self, question_data: dict, label: str):
-        if label not in {"errato", "parzialmente corretto"}:
-            return
-
         items = self._load()
         question_text = question_data["text"]
         items = [item for item in items if item.get("text") != question_text]
-        items.append(
-            {
-                "text": question_text,
-                "label": label,
-                "source_chunks": question_data.get("source_chunks", []),
-            }
-        )
+
+        if label in {"errato", "parzialmente corretto"}:
+            items.append(
+                {
+                    "text": question_text,
+                    "label": label,
+                    "source_chunks": question_data.get("source_chunks", []),
+                }
+            )
+
         self._save(items)
 
     def list_all(self) -> list[dict]:

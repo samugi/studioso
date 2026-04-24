@@ -73,6 +73,30 @@ def test_review_store_persists_only_wrong_or_partial_questions(tmp_path):
     assert store.list_all()[0]["text"] == "Domanda?"
 
 
+def test_review_store_persists_across_instances(tmp_path):
+    material = tmp_path / "material.pdf"
+    material.write_text("x", encoding="utf-8")
+
+    first_store = ReviewStore(str(material))
+    first_store.add({"text": "Q1", "source_chunks": []}, "errato")
+
+    second_store = ReviewStore(str(material))
+
+    assert [item["text"] for item in second_store.list_all()] == ["Q1"]
+
+
+def test_review_store_removes_question_when_answer_becomes_correct(tmp_path):
+    material = tmp_path / "material.pdf"
+    material.write_text("x", encoding="utf-8")
+    store = ReviewStore(str(material))
+
+    question_data = {"text": "Domanda?", "source_chunks": []}
+    store.add(question_data, "errato")
+    store.add(question_data, "corretto")
+
+    assert store.list_all() == []
+
+
 def test_review_store_pop_many_removes_returned_items(tmp_path):
     material = tmp_path / "material.pdf"
     material.write_text("x", encoding="utf-8")
