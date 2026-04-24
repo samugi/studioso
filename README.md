@@ -1,36 +1,36 @@
 # Study Agent
 
-Assistente di studio locale per la preparazione ai concorsi pubblici.
+Local study assistant for working with your own study materials.
 
-Lavora solo sui materiali caricati dall'utente, in italiano, con modalità reference, quiz e ripasso.
+It answers only from user-provided material, works in Italian, and supports reference, quiz, and review modes.
 
-## Caratteristiche principali
+## Main Features
 
-- uso completamente locale tramite Ollama
-- grounding sui materiali di studio caricati
-- supporto a cartella intera o file singolo tramite `study_material`
-- retrieval ibrido vettoriale + lessicale
-- quiz con domande aperte orientate a risposte da prova scritta
-- ripasso delle domande date in modo errato o parzialmente corretto
-- feedback che separa chiaramente:
-  - contenuto
-  - forma italiana
+- fully local usage through Ollama
+- grounded answers based on uploaded study material
+- supports either a whole folder or a single file through `study_material`
+- hybrid vector + lexical retrieval
+- quiz mode with open-ended questions suited to longer written answers
+- review mode for questions previously answered incorrectly or partially correctly
+- feedback that clearly separates:
+  - content
+  - Italian language form
 
-## Requisiti
+## Requirements
 
 - Python 3.10+
-- Ollama installato e in esecuzione
-- macchina consigliata: 16 GB RAM + 6 GB VRAM
+- Ollama installed and running
+- recommended machine: 16 GB RAM + 6 GB VRAM
 
-## Modello consigliato
+## Recommended Model
 
-Default consigliato in `config.yaml`:
+Recommended default in `config.yaml`:
 
 ```yaml
 ollama_model: "qwen2.5:7b"
 ```
 
-Subito sotto, la shortlist finale stimata dei 5 modelli migliori da provare, dal meno complesso al piu complesso, e:
+Below that, the current estimated top 5 models to try, from less complex to more complex, are:
 
 - `qwen2.5:3b`
 - `gemma3:4b`
@@ -38,93 +38,93 @@ Subito sotto, la shortlist finale stimata dei 5 modelli migliori da provare, dal
 - `qwen3.5:4b`
 - `qwen3:8b`
 
-Altri modelli suggeriti sono commentati direttamente in `config.yaml`.
+Other suggested models are commented directly in `config.yaml`.
 
-## Avvio rapido
+## Quick Start
 
-1. Avvia Ollama:
+1. Start Ollama:
 
 ```bash
 ollama serve
 ```
 
-2. Avvia il progetto:
+2. Run the project:
 
 ```bash
 python main.py
 ```
 
-3. Oppure punta a un materiale specifico:
+3. Or point it to a specific study source:
 
 ```bash
-python main.py --material ./materials/diritto
-python main.py --material ./materials/diritto/manuale.pdf
+python main.py --material ./materials/history
+python main.py --material ./materials/history/notes.pdf
 ```
 
-## Configurazione
+## Configuration
 
-La configurazione principale è in `config.yaml`.
+Main configuration lives in `config.yaml`.
 
-Chiavi importanti:
+Important keys:
 
-- `study_material`: file o cartella di studio
-- `ollama_model`: modello LLM
-- `embedding_model`: modello embeddings
-- `retrieval_top_k`: numero di chunk finali
-- `retrieval_candidate_k`: candidati pre-fusione
-- `retrieval_min_relevance`: soglia minima di rilevanza
-- `chunk_size`, `chunk_overlap`: chunking del testo
-- `agent_config`: file prompt/rules (`AGENT.md`)
+- `study_material`: study file or folder
+- `ollama_model`: LLM model
+- `embedding_model`: embedding model
+- `retrieval_top_k`: number of final chunks returned
+- `retrieval_candidate_k`: candidates gathered before hybrid fusion
+- `retrieval_min_relevance`: minimum relevance threshold
+- `chunk_size`, `chunk_overlap`: text chunking settings
+- `agent_config`: prompt/rules file (`AGENT.md`)
 
-`study_folder` è ancora accettato come alias legacy, ma la chiave canonica è `study_material`.
+`study_folder` is still accepted as a legacy alias, but the canonical key is `study_material`.
 
-## Modalità
+## Modes
 
-### 1. Modalita Reference
+### 1. Reference Mode
 
-L'utente fa domande sui materiali caricati.
+The user asks questions about the loaded study material.
 
-- retrieval history-aware per follow-up brevi o ambigui
-- risposta grounded sui chunk recuperati
-- se l'informazione non è supportata dai materiali, l'agente si astiene
+- history-aware retrieval for short or ambiguous follow-up questions
+- grounded answers based on retrieved chunks
+- if the information is not supported by the material, the agent abstains
 
-### 2. Modalita Quiz
+### 2. Quiz Mode
 
-L'agente propone domande aperte da concorso.
+The agent generates open-ended study questions.
 
-- contesto piccolo e grounded
-- preload della prossima domanda mentre l'utente legge il feedback
-- `/skip` sostituisce la domanda con una nuova
-- feedback con classificazione:
+- small, grounded context
+- preloads the next question while the user reads feedback
+- `/skip` replaces the current question with a new one
+- feedback uses one of these classifications:
   - `corretto`
   - `parzialmente corretto`
   - `errato`
 
-Il feedback separa sempre:
+Feedback always separates:
 
 - `Contenuto`
 - `Forma italiana`
 - `Risposta attesa`
 - `Riferimenti`
 
-### 3. Modalita Ripasso
+### 3. Review Mode
 
-Ripropone domande già sbagliate o parzialmente corrette.
+Replays questions previously answered incorrectly or partially correctly.
 
-- namespace separato per il materiale corrente
-- funziona sia con file singolo sia con cartella
-- usa uno storage locale in `.study_agent_review/`
+- separate namespace for the current material
+- works with either a single file or a folder
+- uses local storage in `.study_agent_review/`
 
-## OCR e PDF con immagini
+## OCR and Image-Based PDFs
 
-Il sistema legge il testo estraibile dal PDF.
+The system reads extractable text from PDFs.
 
-Quindi:
+So:
 
-- PDF con layer OCR valido: sì, funziona
-- PDF solo immagini senza testo estraibile: no, o molto male
+- PDFs with a valid OCR text layer: yes, supported
+- image-only PDFs without extractable text: no, or very poorly
 
-## Struttura progetto
+## Project Structure
 
 ```text
 study-agent/
@@ -145,16 +145,16 @@ study-agent/
         └── cli.py
 ```
 
-## Test
+## Tests
 
-Esecuzione test:
+Run tests with:
 
 ```bash
 ./.venv/bin/python -m pytest tests
 ```
 
-## Note
+## Notes
 
-- Il DB vettoriale attuale è ChromaDB.
-- Gli indici sono isolati per materiale, embedding e parametri di chunking.
-- Se cambi embedding model o chunking, viene usato un namespace di indice diverso.
+- The current vector database is ChromaDB.
+- Indexes are namespaced by material, embedding model, and chunking settings.
+- If you change the embedding model or chunking configuration, a different index namespace is used.
