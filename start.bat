@@ -21,7 +21,7 @@ if errorlevel 1 (
 
 REM Run the agent from the virtual environment
 if exist ".venv\Scripts\python.exe" (
-    .\my-venv\Scripts\python.exe main.py %*
+    .venv\Scripts\python.exe main.py %*
 ) else (
     echo   ERROR: Virtual environment not found.
     echo   Run the setup script first.

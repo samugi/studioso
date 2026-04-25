@@ -9,7 +9,7 @@
 #   study_material: "./materials/biology/notes.pdf"
 #   study_material: "C:/Users/YourName/Documents/StudyMaterials"
 #   study_material: "/Users/yourname/Documents/chemistry"
-study_material: "./materials/enti_locali/procedimento_amministrativo.pdf"
+study_material: "./materials/unipd/studiare"
 
 # ─── Model Settings ───────────────────────────────────────────────────────────
 # Ollama model to use.
@@ -22,7 +22,7 @@ study_material: "./materials/enti_locali/procedimento_amministrativo.pdf"
 #   3. "qwen3:4b"     ← newer small model with high upside
 #   4. "qwen3.5:4b"   ← very recent 4B option, worth testing if available in Ollama
 #   5. "qwen3:8b"     ← strongest ambitious option still plausible on this machine
-ollama_model: "qwen2.5:7b"
+ollama_model: "qwen3:8b"
 
 # Ollama server address (default is fine unless you changed it)
 ollama_url: "http://localhost:11434"
