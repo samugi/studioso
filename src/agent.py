@@ -14,11 +14,17 @@ from src.prompt_config import PromptConfig
 console = Console()
 
 
+class QuizQuestionParseError(ValueError):
+    pass
+
+
 class StudyAgent:
     def __init__(self, config: dict):
         self.config = config
         self.ollama_model = config.get("ollama_model", "mistral:7b")
         self.ollama_url = config.get("ollama_url", "http://localhost:11434")
+        self.ollama_think = config.get("ollama_think", "auto")
+        self.ollama_think_max_predict = int(config.get("ollama_think_max_predict", 2048))
         self.show_sources = config.get("show_sources", True)
         self.source_excerpt_length = config.get("source_excerpt_length", 200)
         self.prompt_config = self._load_prompt_config(
@@ -99,12 +105,26 @@ class StudyAgent:
             messages.extend(history[-6:])
         messages.append({"role": "user", "content": user_content})
 
-        response = self._client.chat(
-            model=self.ollama_model,
-            messages=messages,
-            options={"temperature": temperature, "num_predict": num_predict},
-        )
-        return response.message.content.strip()
+        think = self._should_use_thinking()
+        current_num_predict = num_predict
+        max_num_predict = max(num_predict, self.ollama_think_max_predict)
+
+        while True:
+            response = self._client.chat(
+                model=self.ollama_model,
+                messages=messages,
+                options={"temperature": temperature, "num_predict": current_num_predict},
+                think=think,
+            )
+            content = (response.message.content or "").strip()
+            if content or not think or current_num_predict >= max_num_predict:
+                return content
+
+            thinking = (getattr(response.message, "thinking", None) or "").strip()
+            if not thinking:
+                return content
+
+            current_num_predict = min(current_num_predict * 2, max_num_predict)
 
     def _chat_stream(
         self,
@@ -124,10 +144,24 @@ class StudyAgent:
             messages=messages,
             options={"temperature": temperature, "num_predict": num_predict},
             stream=True,
+            think=False,
         )
         for chunk in stream:
             if chunk.message and chunk.message.content:
                 yield chunk.message.content
+
+    def _should_use_thinking(self) -> bool:
+        if isinstance(self.ollama_think, bool):
+            return self.ollama_think
+
+        mode = str(self.ollama_think).strip().lower()
+        if mode in {"true", "on", "yes", "always"}:
+            return True
+        if mode in {"false", "off", "no", "never"}:
+            return False
+
+        model_name = self.ollama_model.split(":", 1)[0].lower()
+        return model_name.startswith("qwen3")
 
     def _build_reference_mode_system_prompt(self, context_chunks: list[dict]) -> str:
         context_str = self._format_context(context_chunks)
@@ -179,8 +213,10 @@ class StudyAgent:
 
                 if stop_markers and re.match(
                     rf"(?i)^(?:{'|'.join(stop_markers)})\s*[:\-]",
-                    stripped,
-                ):
+                        stripped,
+                    ):
+                        break
+                if stripped.startswith("<") and stripped.endswith(">"):
                     break
                 collected.append(stripped)
 
@@ -190,7 +226,29 @@ class StudyAgent:
         question = re.sub(rf"(?i)^{question_label}\s*[:\-]\s*", "", question).strip()
 
         if not question:
-            question = self.prompt_config.messages["fallback_question"]
+            raise QuizQuestionParseError(
+                "Could not parse a quiz question from the model output.\n"
+                f"Expected a line starting with {self.prompt_config.output_labels['question']}:\n"
+                "Raw model output:\n"
+                f"{raw_question or '<empty output>'}"
+            )
+
+        suspicious_markers = (
+            "selected material",
+            "provided context",
+            "context above",
+            "retrieved context",
+        )
+        fallback_question = self.prompt_config.messages.get("fallback_question", "").strip()
+        normalized_question = question.lower()
+        if (fallback_question and question == fallback_question) or any(
+            marker in normalized_question for marker in suspicious_markers
+        ):
+            raise QuizQuestionParseError(
+                "The model output looks like prompt leakage or a placeholder instead of a real quiz question.\n"
+                "Raw model output:\n"
+                f"{raw_question or '<empty output>'}"
+            )
 
         if not question.endswith("?"):
             question += "?"
@@ -200,6 +258,32 @@ class StudyAgent:
             "question_display",
             question=question,
             references=references,
+        )
+
+    def _repair_quiz_question_output(self, raw_question: str, context_chunks: list[dict]) -> str:
+        question_label = self.prompt_config.output_labels["question"]
+        source_label = self.prompt_config.output_labels["source"]
+        references = self._default_references(context_chunks)
+        repair_system = (
+            "You repair malformed quiz-question outputs. "
+            "Return exactly one cleaned quiz question in the required format and nothing else."
+        )
+        repair_user = (
+            "The previous model output was invalid or leaked prompt text.\n\n"
+            f"Required format:\n{question_label}: <question text>\n{source_label}: <one or more source filenames>\n\n"
+            f"Use these source filenames:\n{references}\n\n"
+            "Rules:\n"
+            f"- Remove meta text, reminders, and prompt leakage.\n"
+            f"- If the text is a usable question, rewrite it cleanly.\n"
+            f"- If it is not usable, derive one grounded open-ended question from the source filenames.\n"
+            f"- Keep it specific and study-oriented.\n\n"
+            f"Raw model output:\n{raw_question or '<empty output>'}"
+        )
+        return self._chat(
+            repair_system,
+            repair_user,
+            temperature=0.0,
+            num_predict=128,
         )
 
     def extract_quiz_feedback_label(self, feedback: str) -> str:
@@ -343,7 +427,16 @@ class StudyAgent:
             temperature=0.3,
             num_predict=256,
         )
-        return self._normalize_quiz_question(raw_question, context_chunks)
+        try:
+            return self._normalize_quiz_question(raw_question, context_chunks)
+        except QuizQuestionParseError as first_error:
+            repaired_question = self._repair_quiz_question_output(raw_question, context_chunks)
+            try:
+                return self._normalize_quiz_question(repaired_question, context_chunks)
+            except QuizQuestionParseError as second_error:
+                raise QuizQuestionParseError(
+                    f"{first_error}\n\nRepair attempt output:\n{repaired_question or '<empty output>'}\n\nFinal parse failure:\n{second_error}"
+                ) from second_error
 
     def evaluate_answer(
         self, question: str, user_answer: str, context_chunks: list[dict]

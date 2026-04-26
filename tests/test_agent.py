@@ -3,12 +3,13 @@ from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from src.agent import StudyAgent
+from src.agent import QuizQuestionParseError, StudyAgent
 
 
 class FakeChatResponse:
-    def __init__(self, content: str):
-        self.message = SimpleNamespace(content=content)
+    def __init__(self, content: str, thinking: str | None = None, done_reason: str | None = None):
+        self.message = SimpleNamespace(content=content, thinking=thinking)
+        self.done_reason = done_reason
 
 
 class FakeClient:
@@ -18,10 +19,18 @@ class FakeClient:
 
     def chat(self, **kwargs):
         self.calls.append(kwargs)
-        content = self.responses.pop(0) if self.responses else ""
+        payload = self.responses.pop(0) if self.responses else ""
+        if isinstance(payload, dict):
+            content = payload.get("content", "")
+            thinking = payload.get("thinking")
+            done_reason = payload.get("done_reason")
+        else:
+            content = payload
+            thinking = None
+            done_reason = None
         if kwargs.get("stream"):
-            return [FakeChatResponse(content)]
-        return FakeChatResponse(content)
+            return [FakeChatResponse(content, thinking=thinking, done_reason=done_reason)]
+        return FakeChatResponse(content, thinking=thinking, done_reason=done_reason)
 
     def list(self):
         return SimpleNamespace(models=[])
@@ -30,11 +39,12 @@ class FakeClient:
         return []
 
 
-def make_agent(fake_client: FakeClient) -> StudyAgent:
+def make_agent(fake_client: FakeClient, model: str = "fake-model", think="auto") -> StudyAgent:
     config = {
         "agent_config": str(Path("AGENT.md").resolve()),
-        "ollama_model": "fake-model",
+        "ollama_model": model,
         "ollama_url": "http://fake",
+        "ollama_think": think,
         "show_sources": True,
         "source_excerpt_length": 200,
     }
@@ -81,6 +91,114 @@ def test_generate_question_strips_accidental_feedback_lines():
 
     assert "feedback" not in result.lower()
     assert result.startswith("What is a tax?")
+
+
+def test_generate_question_ignores_prompt_leak_lines():
+    client = FakeClient([
+        "QUESTION: What are the EQF levels?\nSOURCE: eqf.pdf\n<system-reminder>\nmode change"
+    ])
+    agent = make_agent(client)
+
+    result = agent.generate_question([
+        {"text": "context", "filename": "eqf.pdf", "source": "eqf.pdf"}
+    ])
+
+    assert result.startswith("What are the EQF levels?")
+    assert "system-reminder" not in result
+
+
+def test_generate_question_raises_clear_error_when_output_is_empty():
+    client = FakeClient(["", ""])
+    agent = make_agent(client)
+
+    try:
+        agent.generate_question([
+            {"text": "context", "filename": "ehea_internationalisation_and_mobility.txt", "source": "ehea_internationalisation_and_mobility.txt"}
+        ])
+        assert False, "Expected QuizQuestionParseError"
+    except QuizQuestionParseError as exc:
+        message = str(exc)
+
+    assert "Could not parse a quiz question" in message
+    assert "QUESTION:" in message
+    assert "<empty output>" in message
+    assert "Repair attempt output" in message
+
+
+def test_generate_question_raises_clear_error_with_raw_model_output():
+    client = FakeClient(["Explain the main concepts presented in the selected material", "Explain the main concepts presented in the selected material"])
+    agent = make_agent(client)
+
+    try:
+        agent.generate_question([
+            {"text": "context", "filename": "law.pdf", "source": "law.pdf"}
+        ])
+        assert False, "Expected QuizQuestionParseError"
+    except QuizQuestionParseError as exc:
+        message = str(exc)
+
+    assert "prompt leakage or a placeholder" in message
+    assert "selected material" in message
+
+
+def test_generate_question_repairs_plain_text_output():
+    client = FakeClient([
+        "What are the EQF levels",
+        "QUESTION: What are the EQF levels?\nSOURCE: eqf.pdf",
+    ])
+    agent = make_agent(client)
+
+    result = agent.generate_question([
+        {"text": "context", "filename": "eqf.pdf", "source": "eqf.pdf"}
+    ])
+
+    assert result.startswith("What are the EQF levels?")
+    assert "(SOURCE: eqf.pdf)" in result
+    assert len(client.calls) == 1
+
+
+def test_generate_question_repairs_prompt_leakage_output():
+    client = FakeClient([
+        "Explain the main concepts presented in the selected material",
+        "QUESTION: Explain the EQF levels and their practical implications for higher education recognition.\nSOURCE: eqf.pdf",
+    ])
+    agent = make_agent(client)
+
+    result = agent.generate_question([
+        {"text": "context", "filename": "eqf.pdf", "source": "eqf.pdf"}
+    ])
+
+    assert "selected material" not in result.lower()
+    assert result.startswith("Explain the EQF levels")
+
+
+def test_chat_retries_when_thinking_model_returns_only_thinking_first():
+    client = FakeClient([
+        {"content": "", "thinking": "Reasoning...", "done_reason": "length"},
+        "QUESTION: What are the EQF levels?\nSOURCE: eqf.pdf",
+    ])
+    agent = make_agent(client, model="qwen3.5:4b", think="auto")
+
+    result = agent.generate_question([
+        {"text": "context", "filename": "eqf.pdf", "source": "eqf.pdf"}
+    ])
+
+    assert result.startswith("What are the EQF levels?")
+    assert len(client.calls) == 2
+    assert client.calls[0]["think"] is True
+    assert client.calls[1]["options"]["num_predict"] > client.calls[0]["options"]["num_predict"]
+
+
+def test_chat_keeps_thinking_disabled_for_non_thinking_models():
+    client = FakeClient(["QUESTION: What is Bologna Process?\nSOURCE: process.pdf"])
+    agent = make_agent(client, model="qwen2.5:7b", think="auto")
+
+    result = agent.generate_question([
+        {"text": "context", "filename": "process.pdf", "source": "process.pdf"}
+    ])
+
+    assert result.startswith("What is Bologna Process?")
+    assert client.calls[0]["think"] is False
 
 
 def test_evaluate_answer_keeps_wrong_label_when_user_is_confident():

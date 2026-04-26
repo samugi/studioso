@@ -22,10 +22,21 @@ study_material: "./materials/unipd/studiare"
 #   3. "qwen3:4b"     ← newer small model with high upside
 #   4. "qwen3.5:4b"   ← very recent 4B option, worth testing if available in Ollama
 #   5. "qwen3:8b"     ← strongest ambitious option still plausible on this machine
-ollama_model: "qwen2.5:7b"
+ollama_model: "qwen3.5:4b"
 
 # Ollama server address (default is fine unless you changed it)
 ollama_url: "http://localhost:11434"
+
+# Enable Ollama thinking mode.
+# Allowed values:
+#   - "auto"   ← enable thinking for qwen3* models, disable for others
+#   - "on"     ← always enable thinking
+#   - "off"    ← always disable thinking
+ollama_think: "off"
+
+# Maximum token budget allowed when a thinking model needs extra room
+# to finish reasoning and produce visible output.
+ollama_think_max_predict: 2048
 
 # ─── Embedding Model ──────────────────────────────────────────────────────────
 # Used to index your documents for accurate retrieval.
