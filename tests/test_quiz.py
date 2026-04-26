@@ -109,3 +109,15 @@ def test_review_store_pop_many_removes_returned_items(tmp_path):
 
     assert [item["text"] for item in popped] == ["Q1"]
     assert [item["text"] for item in store.list_all()] == ["Q2"]
+
+
+def test_review_store_can_use_non_italian_labels(tmp_path):
+    material = tmp_path / "material.pdf"
+    material.write_text("x", encoding="utf-8")
+    store = ReviewStore(str(material), retained_labels={"wrong", "partially correct"})
+
+    store.add({"text": "Q1", "source_chunks": []}, "wrong")
+    store.add({"text": "Q2", "source_chunks": []}, "partially correct")
+    store.add({"text": "Q3", "source_chunks": []}, "correct")
+
+    assert [item["text"] for item in store.list_all()] == ["Q1", "Q2"]

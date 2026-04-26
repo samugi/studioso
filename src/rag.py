@@ -417,8 +417,8 @@ class RAGEngine:
             return user_input
 
         return (
-            f"Contesto della conversazione recente: {previous_user_inputs[-1]}\n"
-            f"Domanda attuale: {user_input}"
+            f"Recent conversation context: {previous_user_inputs[-1]}\n"
+            f"Current question: {user_input}"
         )
 
     def ingest(self, force: bool = False) -> int:

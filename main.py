@@ -21,6 +21,28 @@ def _resolve_path(config_base: Path, value: str, default: str) -> str:
     return str(resolved.resolve())
 
 
+def _resolve_agent_config_for_material(study_material: str, fallback_agent_config: str) -> str:
+    fallback_path = Path(fallback_agent_config).resolve()
+    material_path = Path(study_material).resolve()
+    search_root = fallback_path.parent
+    current = material_path if material_path.is_dir() else material_path.parent
+
+    try:
+        current.relative_to(search_root)
+    except ValueError:
+        return str(fallback_path)
+
+    while True:
+        candidate = current / "AGENT.md"
+        if candidate.exists():
+            return str(candidate.resolve())
+        if current == search_root:
+            break
+        current = current.parent
+
+    return str(fallback_path)
+
+
 def load_config(config_path: str = "config.yaml") -> dict:
     path = Path(config_path)
     if not path.exists():
@@ -34,10 +56,14 @@ def load_config(config_path: str = "config.yaml") -> dict:
     config["study_material"] = _resolve_path(path.parent, study_material, "./materials")
     config["study_folder"] = config["study_material"]
 
-    config["agent_config"] = _resolve_path(
+    config["agent_config_fallback"] = _resolve_path(
         path.parent,
         config.get("agent_config", "./AGENT.md"),
         "./AGENT.md",
+    )
+    config["agent_config"] = _resolve_agent_config_for_material(
+        config["study_material"],
+        config["agent_config_fallback"],
     )
 
     return config
@@ -81,6 +107,10 @@ def main():
             material = Path.cwd() / material
         config["study_material"] = str(material.resolve())
         config["study_folder"] = config["study_material"]
+        config["agent_config"] = _resolve_agent_config_for_material(
+            config["study_material"],
+            config.get("agent_config_fallback", config.get("agent_config", "./AGENT.md")),
+        )
     if args.model:
         config["ollama_model"] = args.model
 

@@ -62,7 +62,10 @@ class StudyAgent:
 
     def _format_context(self, context_chunks: list[dict], full_text: bool = False) -> str:
         if not context_chunks:
-            return "Nessun contesto rilevante trovato."
+            return self.prompt_config.messages.get(
+                "no_context_message",
+                "No relevant context found.",
+            )
 
         context_parts = []
         for i, chunk in enumerate(context_chunks, 1):
@@ -70,7 +73,10 @@ class StudyAgent:
             if not full_text:
                 text = text[: self.source_excerpt_length * 2]
 
-            filename = chunk.get("filename", "sconosciuto")
+            filename = chunk.get(
+                "filename",
+                self.prompt_config.messages.get("unknown_filename", "unknown"),
+            )
             source = chunk.get("source")
             header = f"[Fonte {i}: {filename}]"
             if source:
@@ -263,7 +269,10 @@ class StudyAgent:
                 + self.prompt_config.render_format(
                     "italian_form_line",
                     italian_form_feedback=(
-                        "Se la forma italiana puo essere migliorata, riscrivi la risposta in modo piu chiaro, corretto e adatto a una prova concorsuale."
+                        self.prompt_config.messages.get(
+                            "fallback_form_feedback",
+                            "Se la forma italiana puo essere migliorata, riscrivi la risposta in modo piu chiaro, corretto e adatto a una prova concorsuale.",
+                        )
                     ),
                 )
             )

@@ -10,12 +10,13 @@ from pathlib import Path
 
 
 class ReviewStore:
-    def __init__(self, study_material: str):
+    def __init__(self, study_material: str, retained_labels: set[str] | None = None):
         material_path = Path(study_material).resolve()
         namespace = hashlib.md5(str(material_path).encode("utf-8")).hexdigest()[:12]
         store_dir = material_path.parent / ".study_agent_review"
         store_dir.mkdir(parents=True, exist_ok=True)
         self.path = store_dir / f"{material_path.stem}_{namespace}.json"
+        self.retained_labels = set(retained_labels or {"errato", "parzialmente corretto"})
 
     def _load(self) -> list[dict]:
         if not self.path.exists():
@@ -36,7 +37,7 @@ class ReviewStore:
         question_text = question_data["text"]
         items = [item for item in items if item.get("text") != question_text]
 
-        if label in {"errato", "parzialmente corretto"}:
+        if label in self.retained_labels:
             items.append(
                 {
                     "text": question_text,

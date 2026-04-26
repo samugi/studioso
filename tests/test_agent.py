@@ -53,56 +53,56 @@ def test_answer_question_sends_system_first_and_user_last():
 
     sent_messages = client.calls[0]["messages"]
     assert sent_messages[0]["role"] == "system"
-    assert "CONTESTO DEL MATERIALE DI STUDIO" in sent_messages[0]["content"]
+    assert "STUDY MATERIAL CONTEXT" in sent_messages[0]["content"]
     assert sent_messages[1] == history[0]
     assert sent_messages[-1]["role"] == "user"
     assert "domanda utente" in sent_messages[-1]["content"]
 
 
 def test_generate_question_uses_prompt_config_and_normalizes_output():
-    client = FakeClient(["DOMANDA: Che cos'e un tributo\nFONTE: diritto.pdf"])
+    client = FakeClient(["QUESTION: What is a tax?\nSOURCE: law.pdf"])
     agent = make_agent(client)
 
     result = agent.generate_question([
-        {"text": "contesto", "filename": "diritto.pdf", "source": "diritto.pdf"}
+        {"text": "context", "filename": "law.pdf", "source": "law.pdf"}
     ])
 
-    assert result.startswith("Che cos'e un tributo?")
-    assert "(FONTE: diritto.pdf)" in result
+    assert result.startswith("What is a tax?")
+    assert "(SOURCE: law.pdf)" in result
 
 
 def test_generate_question_strips_accidental_feedback_lines():
-    client = FakeClient(["Che cos'e il tributo\nfeedback: bravo\nFONTE: diritto.pdf"])
+    client = FakeClient(["What is a tax\nfeedback: good\nSOURCE: law.pdf"])
     agent = make_agent(client)
 
     result = agent.generate_question([
-        {"text": "contesto", "filename": "diritto.pdf", "source": "diritto.pdf"}
+        {"text": "context", "filename": "law.pdf", "source": "law.pdf"}
     ])
 
     assert "feedback" not in result.lower()
-    assert result.startswith("Che cos'e il tributo?")
+    assert result.startswith("What is a tax?")
 
 
 def test_evaluate_answer_keeps_wrong_label_when_user_is_confident():
     client = FakeClient([
-        "errato: la risposta non coincide con il materiale\nRisposta attesa: risposta vera\nRiferimenti: diritto.pdf"
+        "wrong: the answer does not match the material\nExpected answer: the correct answer\nReferences: law.pdf"
     ])
     agent = make_agent(client)
 
     result = agent.evaluate_answer(
         "Domanda?",
         "Sono sicurissimo che sia cosi.",
-        [{"text": "contesto", "filename": "diritto.pdf", "source": "diritto.pdf"}],
+        [{"text": "context", "filename": "law.pdf", "source": "law.pdf"}],
     )
 
-    assert result.startswith("errato:")
+    assert result.startswith("wrong:")
 
 
 def test_extract_quiz_feedback_label_defaults_to_wrong_when_missing():
     client = FakeClient([])
     agent = make_agent(client)
 
-    assert agent.extract_quiz_feedback_label("testo senza etichetta") == "errato"
+    assert agent.extract_quiz_feedback_label("text without label") == "wrong"
 
 
 def test_normalize_quiz_feedback_adds_missing_sections():
@@ -110,15 +110,15 @@ def test_normalize_quiz_feedback_adds_missing_sections():
     agent = make_agent(client)
 
     result = agent._normalize_quiz_feedback(
-        "corretto: buona risposta",
-        [{"text": "contesto", "filename": "diritto.pdf", "source": "diritto.pdf"}],
+        "correct: good answer",
+        [{"text": "context", "filename": "law.pdf", "source": "law.pdf"}],
     )
 
-    assert result.startswith("corretto:")
-    assert "Contenuto:" in result
-    assert "Forma italiana:" in result
-    assert "Risposta attesa:" in result
-    assert "Riferimenti: diritto.pdf" in result
+    assert result.startswith("correct:")
+    assert "Content:" in result
+    assert "Language form:" in result
+    assert "Expected answer:" in result
+    assert "References: law.pdf" in result
 
 
 def test_normalize_uses_configurable_labels():
@@ -126,19 +126,19 @@ def test_normalize_uses_configurable_labels():
     agent = make_agent(client)
 
     question = agent._normalize_quiz_question(
-        "DOMANDA: Qual e il principio?\nFONTE: fonte.pdf",
-        [{"text": "contesto", "filename": "fonte.pdf", "source": "fonte.pdf"}],
+        "QUESTION: What is the principle?\nSOURCE: source.pdf",
+        [{"text": "context", "filename": "source.pdf", "source": "source.pdf"}],
     )
     feedback = agent._normalize_quiz_feedback(
-        "corretto: bene",
-        [{"text": "contesto", "filename": "fonte.pdf", "source": "fonte.pdf"}],
+        "correct: good",
+        [{"text": "context", "filename": "source.pdf", "source": "source.pdf"}],
     )
 
-    assert "(FONTE: fonte.pdf)" in question
-    assert feedback.startswith("corretto:")
-    assert "Contenuto:" in feedback
-    assert "Forma italiana:" in feedback
-    assert "Risposta attesa:" in feedback
+    assert "(SOURCE: source.pdf)" in question
+    assert feedback.startswith("correct:")
+    assert "Content:" in feedback
+    assert "Language form:" in feedback
+    assert "Expected answer:" in feedback
 
 
 def test_answer_question_stream_uses_same_prompt_order():
@@ -172,3 +172,32 @@ def test_load_prompt_config_from_relative_path_in_temp_dir():
             agent = StudyAgent(config)
 
         assert agent.prompt_config.path == copied.resolve()
+
+
+def test_normalize_quiz_feedback_uses_configurable_fallback_form_feedback():
+    with TemporaryDirectory() as tmp_dir:
+        base = Path(tmp_dir)
+        custom = base / "AGENT.md"
+        content = Path("AGENT.md").read_text(encoding="utf-8")
+        custom.write_text(
+            content.replace(
+                'default_references_fallback: "materiale di studio"',
+                'default_references_fallback: "materiale di studio"\n    fallback_form_feedback: "If the writing can be improved, rewrite the answer more clearly in English."',
+            ),
+            encoding="utf-8",
+        )
+
+        config = {
+            "agent_config": str(custom),
+            "ollama_model": "fake-model",
+            "ollama_url": "http://fake",
+        }
+        with patch("src.agent.ollama.Client", return_value=FakeClient([])):
+            agent = StudyAgent(config)
+
+        result = agent._normalize_quiz_feedback(
+            "corretto: buona risposta",
+            [{"text": "contesto", "filename": "fonte.pdf", "source": "fonte.pdf"}],
+        )
+
+        assert "If the writing can be improved" in result

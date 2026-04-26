@@ -2,19 +2,19 @@
 
 Local study assistant for working with your own study materials.
 
-It answers only from user-provided material, works in Italian, and supports reference, quiz, and review modes.
+It answers only from user-provided material, uses an English app interface by default, and supports reference, quiz, and review modes.
 
 ## Main Features
 
 - fully local usage through Ollama
 - grounded answers based on uploaded study material
 - supports either a whole folder or a single file through `study_material`
+- English CLI and app interface by default
+- nearest local `AGENT.md` override for subject-specific behavior and language
 - hybrid vector + lexical retrieval
 - quiz mode with open-ended questions suited to longer written answers
 - review mode for questions previously answered incorrectly or partially correctly
-- feedback that clearly separates:
-  - content
-  - Italian language form
+- prompt-driven evaluation labels and output formatting
 
 ## Requirements
 
@@ -29,14 +29,6 @@ Recommended default in `config.yaml`:
 ```yaml
 ollama_model: "qwen2.5:7b"
 ```
-
-Below that, the current estimated top 5 models to try, from less complex to more complex, are:
-
-- `qwen2.5:3b`
-- `gemma3:4b`
-- `qwen3:4b`
-- `qwen3.5:4b`
-- `qwen3:8b`
 
 Other suggested models are commented directly in `config.yaml`.
 
@@ -74,9 +66,30 @@ Important keys:
 - `retrieval_candidate_k`: candidates gathered before hybrid fusion
 - `retrieval_min_relevance`: minimum relevance threshold
 - `chunk_size`, `chunk_overlap`: text chunking settings
-- `agent_config`: prompt/rules file (`AGENT.md`)
+- `agent_config`: global fallback prompt/rules file
 
 `study_folder` is still accepted as a legacy alias, but the canonical key is `study_material`.
+
+## `AGENT.md` Resolution
+
+The root `AGENT.md` is the global fallback.
+
+When you choose a `study_material`, the app looks for the nearest `AGENT.md` in that subtree.
+
+Examples:
+
+- if you select `materials/foo` and `materials/foo/AGENT.md` exists, that file is used
+- if you select `materials/bar/zap` and only `materials/bar/AGENT.md` exists, that file is used
+- if no nearer file exists, the root `AGENT.md` is used
+
+This allows per-subject customization of:
+
+- interaction language
+- prompt wording
+- output labels
+- quiz behavior
+- domain-specific evaluation rules
+
 
 ## Modes
 
@@ -95,17 +108,15 @@ The agent generates open-ended study questions.
 - small, grounded context
 - preloads the next question while the user reads feedback
 - `/skip` replaces the current question with a new one
-- feedback uses one of these classifications:
-  - `corretto`
-  - `parzialmente corretto`
-  - `errato`
+- feedback labels come from the active `AGENT.md`
+- quiz scoring and review persistence work with both English and Italian label sets
 
-Feedback always separates:
+Feedback separates:
 
-- `Contenuto`
-- `Forma italiana`
-- `Risposta attesa`
-- `Riferimenti`
+- content
+- language form
+- expected answer
+- references
 
 ### 3. Review Mode
 
@@ -115,14 +126,14 @@ Replays questions previously answered incorrectly or partially correctly.
 - works with either a single file or a folder
 - uses local storage in `.study_agent_review/`
 
-## OCR and Image-Based PDFs
+## OCR And Image-Based PDFs
 
 The system reads extractable text from PDFs.
 
 So:
 
-- PDFs with a valid OCR text layer: yes, supported
-- image-only PDFs without extractable text: no, or very poorly
+- PDFs with a valid OCR text layer are supported
+- image-only PDFs without extractable text are not reliably supported
 
 ## Project Structure
 
@@ -131,8 +142,15 @@ study-agent/
 ├── AGENT.md
 ├── config.yaml
 ├── main.py
-├── requirements.txt
+├── README.md
 ├── materials/
+│   ├── README.md
+│   ├── unipd/
+│   │   ├── AGENT.md
+│   │   ├── Bando_2026N14_0.pdf
+│   │   └── studiare/
+│   └── ...
+├── requirements.txt
 └── src/
     ├── agent.py
     ├── prompt_config.py
